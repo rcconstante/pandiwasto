@@ -1,0 +1,12 @@
+# ========== BACKEND ==========
+node_modules/
+.env
+.env.local
+dist/
+supabase_keys.txt
+
+
+# ========== FRONTEND ==========
+
+
+# ========== GENERAL ==========
