@@ -230,6 +230,16 @@ code {
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+:root {
+  --pw-paper: #fcf9ef;
+  --pw-ink: #141a16;
+  --pw-accent: #315c43;
+  --pw-lime: #d7ff8d;
+  --pw-gutter: clamp(16px, 4vw, 60px);
+  --pw-surface: #fffdf6;
+  --pw-brand-gradient: linear-gradient(115deg, #e2ff98, #c2f74e);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -255,4 +265,19 @@ code {
 @theme {
   --font-display: "Carnivalee Freakshow", "Poppins", sans-serif;
   --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pwd-game-row[data-direction], .pw-game-track[data-direction] {
+    --carousel-offset: 9px;
+    animation: pw-carousel-in 200ms ease-out both;
+  }
+
+  .pwd-game-row[data-direction="-1"], .pw-game-track[data-direction="-1"] {
+    --carousel-offset: -9px;
+  }
+}
+
+@keyframes pw-carousel-in {
+  from { opacity: .55; translate: var(--carousel-offset) 0; }
+  to { opacity: 1; translate: 0 0; }
 }

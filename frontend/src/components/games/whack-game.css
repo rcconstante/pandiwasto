@@ -1,0 +1,136 @@
+.whack-game { --whack-edge: #7a9f76; --whack-depth: #557851; }
+.whack-intro, .whack-stage {
+  border: 2px solid var(--whack-edge);
+  border-radius: clamp(22px, 4vw, 42px);
+  background-color: #dbeedc;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto, cover;
+  box-shadow: 0 6px 0 #aacaa1;
+}
+.whack-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .7fr);
+  align-items: center;
+  gap: clamp(8px, 4vw, 48px);
+  min-height: min(560px, 68vh);
+  padding: clamp(22px, 6vw, 68px);
+  background-image: linear-gradient(90deg, #fbfff1f5 16%, #fbfff1c2 50%, #fbfff113 90%), url("/games/whack-garden.webp");
+}
+.whack-intro h1 {
+  margin: 12px 0;
+  color: var(--pw-accent);
+  font-family: var(--font-display, "Figtree Variable", sans-serif);
+  font-size: clamp(48px, 8vw, 112px);
+  line-height: .88;
+  text-wrap: balance;
+}
+.whack-intro-copy { max-width: 43ch; font-size: clamp(15px, 2.2vw, 22px); font-weight: 700; line-height: 1.4; }
+.whack-intro > img { width: min(100%, 430px); height: auto; margin: auto; filter: drop-shadow(0 15px 20px #405f4932); }
+.whack-examples {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 22px 0;
+  max-width: 600px;
+}
+.whack-examples > div { padding: 7px 6px; border-radius: 10px; background: var(--whack-choice-bg); text-align: center; }
+.whack-examples dt { font-size: 13px; font-weight: 850; }
+.whack-examples dd { font-size: 11px; font-weight: 650; }
+.whack-intro-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.whack-practice { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 750; cursor: pointer; }
+.whack-practice input { width: 17px; height: 17px; accent-color: var(--pw-accent); }
+
+.whack-hud { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: clamp(5px, 2vw, 12px); align-items: center; margin-bottom: 10px; }
+.whack-timer { display: flex; align-items: center; gap: 5px; min-height: 36px; padding: 4px 9px; border: 1px solid #d7e1d0; border-radius: 999px; background: var(--pw-surface); }
+.whack-timer { justify-self: center; width: min(100%, 310px); color: #365645; font-weight: 800; font-size: 13px; }
+.whack-timer progress { width: 100%; min-width: 0; height: 10px; border: 0; border-radius: 999px; background: #e8eddb; appearance: none; overflow: hidden; }
+.whack-timer progress::-webkit-progress-bar { background: #e8eddb; }
+.whack-timer progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, #6ba461, #a3c85e); }
+.whack-timer progress::-moz-progress-bar { background: #76ab62; border-radius: 999px; }
+.whack-timer span { min-width: 26px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.whack-timer span:only-child { text-align: center; width: 100%; }
+.whack-timer svg { flex-shrink: 0; }
+.whack-hud .pop-score { flex-wrap: nowrap; white-space: nowrap; padding-inline: clamp(5px, 2vw, 11px); }
+.whack-stage {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  justify-items: center;
+  min-height: clamp(255px, 42vw, 400px);
+  padding: clamp(12px, 3vw, 26px) clamp(8px, 5vw, 56px) 10px;
+  background-image: linear-gradient(#effbed12, #e1f5ce32), url("/games/whack-garden.webp");
+}
+.whack-stage h1 {
+  text-align: center;
+  padding: 5px 9px;
+  border-radius: 9px;
+  background: #fffdf6e6;
+  font-size: clamp(14px, 2.3vw, 23px);
+  font-weight: 850;
+  line-height: 1.2;
+}
+.whack-word {
+  max-width: 100%;
+  margin-top: 7px;
+  padding: 5px clamp(12px, 3vw, 36px) 8px;
+  overflow-wrap: anywhere;
+  border: 2px solid #91b286;
+  border-radius: 18px;
+  background: var(--pw-surface);
+  color: var(--pw-accent);
+  font-size: clamp(31px, 7vw, 68px);
+  font-weight: 900;
+  letter-spacing: -.035em;
+  line-height: 1.04;
+  text-align: center;
+  box-shadow: 0 4px 0 #83a979;
+  animation: whack-word-in .23s ease both;
+}
+.whack-holes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: clamp(10px, 4vw, 50px); width: min(100%, 730px); height: 100%; }
+.whack-hole { position: relative; isolation: isolate; min-width: 0; height: clamp(105px, 18vw, 190px); overflow: hidden; }
+.whack-hole-rim { position: absolute; inset: auto 3% 2% 3%; height: 25%; border: 4px solid #a06a43; border-radius: 50%; background: radial-gradient(ellipse at 50% 60%, #373125, #5d4936 65%, #856045); box-shadow: 0 4px 0 #75513747; }
+.whack-hole-rim::after { content: ""; position: absolute; inset: 62% 2% -13%; border-radius: 0 0 100% 100%; background: #a4704c; }
+.whack-mole { position: absolute; z-index: 1; inset: auto 0 10%; width: 100%; height: 85%; object-fit: contain; filter: drop-shadow(0 3px 3px #503b3938); transform-origin: 50% 90%; animation: whack-rise .26s cubic-bezier(.22,.8,.36,1.3) both; }
+.whack-mole[data-state="correct"] { animation: whack-bounce .48s ease both; }
+.whack-mole[data-state="down"] { animation: whack-duck .2s ease both; }
+.whack-hit-spark { position: absolute; z-index: 2; top: 15%; right: 8%; width: clamp(20px, 3vw, 40px); height: auto; color: #946813; fill: #ffe890; animation: whack-spark .75s ease-out both; }
+@keyframes whack-rise { from { transform: translateY(35%) scale(.82); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes whack-duck { to { transform: translateY(42%) scale(.78); opacity: 0; } }
+@keyframes whack-bounce { 40% { transform: translateY(6px) scale(1.14,.82); } 70% { transform: translateY(-8px) scale(.96,1.06); } }
+@keyframes whack-word-in { from { transform: translateY(4px) scale(.96); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes whack-spark { 0% { transform: scale(.35); } 35% { opacity: 1; transform: translateY(-5px) scale(1.15); } 100% { opacity: 0; transform: translateY(-16px); } }
+
+.whack-answers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(6px, 1.3vw, 13px); margin-top: 19px; }
+.whack-game [data-type="payak"] { --whack-choice-bg: #e1f3c9; --whack-choice-border: #729d5f; }
+.whack-game [data-type="maylapi"] { --whack-choice-bg: #dceefc; --whack-choice-border: #739ec1; }
+.whack-game [data-type="tambalan"] { --whack-choice-bg: #fff0bf; --whack-choice-border: #b7914c; }
+.whack-game [data-type="inuulit"] { --whack-choice-bg: #f9e3ef; --whack-choice-border: #b787a2; }
+.whack-choice { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 57px; padding: 6px; border: 2px solid var(--whack-choice-border); border-radius: 16px; background: var(--whack-choice-bg); box-shadow: 0 3px 0 var(--whack-choice-border); font-size: clamp(15px, 3vw, 25px); font-weight: 850; cursor: pointer; }
+.whack-choice:hover:enabled { filter: brightness(1.04); transform: translateY(-2px); }
+.whack-choice:active:enabled { transform: translateY(2px); box-shadow: none; }
+.whack-choice:disabled { cursor: default; opacity: .66; }
+.whack-choice[data-correct="true"] { opacity: 1; outline: 2px solid #315c43; outline-offset: 2px; }
+.whack-choice kbd { display: grid; place-items: center; flex: 0 0 23px; height: 23px; border-radius: 6px; background: #fffdf6; font-family: inherit; font-size: 12px; }
+.whack-feedback { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px; min-height: 55px; margin-top: 12px; padding: 6px 10px; border-radius: 13px; background: #fffdf6cc; font-size: 14px; font-weight: 650; }
+.whack-feedback p { min-width: min(100%, 240px); flex: 1; }
+.whack-feedback p > svg { display: inline-block; vertical-align: text-bottom; }
+.whack-feedback[data-result="correct"] { background: #e1f3ca; }
+.whack-feedback[data-result="wrong"], .whack-feedback[data-result="timeout"] { background: #fff0d5; }
+.whack-results { border-color: var(--whack-edge); box-shadow: 0 6px 0 #aacaa1; }
+
+@media (max-width: 650px) {
+  .whack-intro { grid-template-columns: minmax(0, 1fr); text-align: center; background-image: linear-gradient(#fbfff155, #fbfff1e0 74%), url("/games/whack-garden-mobile.webp"); }
+  .whack-intro > img { grid-row: 1; width: min(100%, 158px); }
+  .whack-intro-copy { margin-inline: auto; }
+  .whack-intro-actions { justify-content: center; }
+  .whack-examples { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0; }
+  .whack-stage { background-image: linear-gradient(#effbed12, #e1f5ce32), url("/games/whack-garden-mobile.webp"); background-size: auto, 100% 100%; }
+  .whack-answers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .whack-choice { gap: 5px; border-radius: 11px; min-height: 47px; }
+  .whack-choice kbd { flex-basis: 17px; height: 17px; font-size: 10px; }
+  .whack-feedback { justify-content: center; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .whack-word, .whack-mole, .whack-mole[data-state], .whack-hit-spark { animation: none; }
+  .whack-mole[data-state="down"] { visibility: hidden; }
+}

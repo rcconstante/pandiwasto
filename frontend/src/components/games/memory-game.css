@@ -1,0 +1,107 @@
+.memory-game { --memory-edge: #83a675; }
+.memory-intro, .memory-stage {
+  border: 2px solid var(--memory-edge);
+  border-radius: clamp(22px, 4vw, 42px);
+  background-color: #e5f5da;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto, cover;
+  box-shadow: 0 6px 0 #abc89b;
+}
+.memory-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .78fr);
+  align-items: center;
+  gap: clamp(10px, 4vw, 48px);
+  min-height: min(560px, 68vh);
+  padding: clamp(22px, 6vw, 66px);
+  background-image: linear-gradient(90deg, #fffbeeef 12%, #fbfff1c2 50%, #fbfff112 95%), url("/games/memory-fair.webp");
+}
+.memory-intro h1 {
+  margin: 13px 0;
+  color: var(--pw-accent);
+  font-family: var(--font-display, "Figtree Variable", sans-serif);
+  font-size: clamp(46px, 8vw, 105px);
+  line-height: .87;
+  text-wrap: balance;
+}
+.memory-intro-copy { max-width: 36ch; font-size: clamp(16px, 2.2vw, 22px); font-weight: 700; line-height: 1.4; }
+.memory-intro > img { width: min(100%, 435px); height: auto; margin: auto; filter: drop-shadow(0 14px 16px #4c63413b); }
+
+.memory-hud { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.memory-stage {
+  display: grid;
+  justify-items: center;
+  gap: clamp(11px, 2vw, 18px);
+  padding: clamp(12px, 4vw, 30px);
+  background-image: linear-gradient(#fffaf02e, #e7f5d636), url("/games/memory-fair.webp");
+}
+.memory-board-caption { padding: 7px 16px; border-radius: 14px; background: #fffdf6f5; text-align: center; }
+.memory-board-caption h1 { color: var(--pw-accent); font-size: clamp(19px, 3.1vw, 40px); font-weight: 900; line-height: 1.05; letter-spacing: -.038em; }
+.memory-board-caption p { margin-top: 3px; color: #405a4a; font-size: 13px; font-weight: 750; }
+
+.memory-board {
+  --memory-gap: clamp(7px, 1.5vw, 14px);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(100%, 910px);
+  gap: var(--memory-gap);
+}
+.memory-board[data-count="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(100%, 560px); }
+.memory-board[data-count="8"] { grid-template-columns: repeat(4, minmax(0, 1fr)); width: min(100%, 735px); }
+.memory-card { position: relative; min-width: 0; min-height: 55px; aspect-ratio: 1.38; perspective: 700px; border-radius: clamp(10px, 1.8vw, 18px); cursor: pointer; }
+.memory-card[aria-disabled="true"] { cursor: default; }
+.memory-card-inner { position: absolute; inset: 0; border-radius: inherit; transform-style: preserve-3d; transition: transform .24s ease-out; }
+.memory-card[data-revealed="true"] .memory-card-inner { transform: rotateY(180deg); }
+.memory-card-back, .memory-card-front {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 2px solid #779778;
+  border-radius: inherit;
+  backface-visibility: hidden;
+  box-shadow: 0 3px 0 #557e63;
+}
+.memory-card-back {
+  isolation: isolate;
+  background: linear-gradient(148deg,#dff4cc,#c8e7f7);
+  color: #4d795d;
+}
+.memory-card-back::before { content: ""; position: absolute; inset: 13%; z-index: -1; border: 1px dashed #77a085; border-radius: 11px; }
+.memory-card-back > small { position: absolute; inset: auto auto 6% 9%; font-size: clamp(9px, 1.25vw, 13px); font-weight: 850; }
+.memory-card-back > svg { width: clamp(20px, 3vw, 34px); height: auto; fill: #fff5bd; }
+.memory-card[aria-disabled="false"]:hover[data-revealed="false"] .memory-card-back { background: linear-gradient(148deg,#edf8d4,#d8f2fc); }
+.memory-card-front { transform: rotateY(180deg); background: var(--pw-surface); color: #315c43; text-align: center; }
+.memory-card-front > svg { position: absolute; top: 4%; right: 5%; width: clamp(10px, 1.6vw, 16px); height: auto; }
+.memory-card-word { word-break: normal; overflow-wrap: anywhere; font-size: clamp(13px, 2.45vw, 29px); font-weight: 900; line-height: 1.05; }
+.memory-card[data-matched="true"] .memory-card-front { background: #e4f4ca; color: #28583b; border-color: #8ba86b; }
+.memory-card[data-miss="true"] .memory-card-front { background: #ffead3; border-color: #c79569; }
+.memory-card[data-hint="true"] { outline: 3px solid #a87513; outline-offset: 3px; }
+.memory-card:focus-visible { outline: 3px solid #315c43; outline-offset: 3px; }
+.memory-feedback { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px; min-height: 35px; max-width: 100%; padding: 5px 10px; border-radius: 10px; background: #fffdf6e8; color: #365645; font-size: 14px; font-weight: 750; text-align: center; }
+.memory-feedback[data-miss="true"] { color: #793f28; background: #ffebd6; }
+.memory-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.memory-clue { padding: 7px 11px; border-radius: 9px; background: #fff2c4; color: #664e22; font-size: 14px; }
+
+.memory-results { border-color: var(--memory-edge); box-shadow: 0 6px 0 #abc89b; }
+.memory-celebration { width: min(calc(100vw - 32px), 500px); }
+.memory-celebration > img { width: 69px; height: 69px; object-fit: contain; }
+.memory-summary { display: grid; gap: 5px; width: 100%; padding: 2px; text-align: left; }
+.memory-summary li { display: grid; gap: 2px; padding: 6px 9px; border-radius: 8px; background: #eff5e6; color: #385645; font-size: 13px; }
+.memory-summary li strong { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.memory-summary li span { font-size: 12px; }
+
+@media (max-width: 650px) {
+  .memory-intro { grid-template-columns: minmax(0, 1fr); text-align: center; background-image: linear-gradient(#fffdf628, #fcfae8f5 72%), url("/games/memory-fair-mobile.webp"); }
+  .memory-intro > img { grid-row: 1; width: min(100%, 173px); }
+  .memory-intro-copy { margin-inline: auto; }
+  .memory-stage { background-image: linear-gradient(#fffaf02e, #e7f5d636), url("/games/memory-fair-mobile.webp"); background-size: auto, 100% 100%; }
+  .memory-board { display: flex; justify-content: center; flex-wrap: wrap; }
+  .memory-card { flex: 0 0 calc((100% - 3 * var(--memory-gap)) / 4); }
+  .memory-board[data-count="6"] .memory-card { flex-basis: calc((100% - 2 * var(--memory-gap)) / 3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .memory-card-inner { transition: none; }
+}

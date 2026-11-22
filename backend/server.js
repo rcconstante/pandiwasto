@@ -1,36 +1,35 @@
 import "dotenv/config";
-import express from "express";
-import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+import { createApp } from "./app.js";
+import { createGeminiHintProvider } from "./gemini.js";
 
-const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS: tells the browser "requests from this address are allowed"
-app.use(cors({ origin: process.env.CLIENT_URL }));
-app.use(express.json());
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "PandiWasto backend is running" });
-});
-
-app.get("/api/db-test", async (req, res) => {
-  const { data, error } = await supabase
-    .from("connection_test")
-    .select("*")
-    .limit(1);
-
-  if (error) {
-    return res.status(500).json({ status: "error", message: error.message });
+function isServiceRoleKey(key) {
+  if (!key) return false;
+  if (key.startsWith("sb_secret_")) return true;
+  try {
+    const segments = key.split(".");
+    return segments.length === 3 && JSON.parse(Buffer.from(segments[1], "base64url").toString()).role === "service_role";
+  } catch {
+    return false;
   }
-  res.json({ status: "ok", data });
+}
+
+const supabaseUrl = process.env.SUPABASE_URL?.trim();
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const legacyKey = process.env.SUPABASE_KEY?.trim();
+const privilegedKey = [serviceKey, legacyKey].find(isServiceRoleKey);
+const db = supabaseUrl && privilegedKey
+  ? createClient(supabaseUrl, privilegedKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
+  : null;
+
+const app = createApp({
+  supabase: db,
+  clientOrigin: new URL(process.env.CLIENT_URL || "http://localhost:5173").origin,
+  hintProvider: createGeminiHintProvider({ key: process.env.GEMINI_API_KEY?.trim(), model: process.env.GEMINI_MODEL?.trim() || undefined }),
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+  console.log("Backend running on http://localhost:" + PORT);
 });

@@ -1,49 +1,67 @@
-import { useState } from "react";
-import axios from "axios";
-import DesignTest from "./DesignTest";
+import { useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { authClient } from "@/lib/auth";
+import { SignInModal } from "@/components/ui/auth-ui";
+import { LandingPage } from "@/pages/LandingPage";
+import { Dashboard } from "@/pages/Dashboard";
 
-const API_URL = import.meta.env.VITE_API_URL;
+export function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [preview, setPreview] = useState(false);
+  const [showLanding, setShowLanding] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const authTrigger = useRef<HTMLElement | null>(null);
 
-function App() {
-  const [backendStatus, setBackendStatus] = useState("Not checked yet");
-  const [dbStatus, setDbStatus] = useState("Not checked yet");
-
-  const checkBackend = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/api/health`);
-      setBackendStatus(`✅ ${res.data.message}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setBackendStatus(`❌ ${message}`);
-    }
-  };
-
-  const checkDatabase = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/api/db-test`);
-      const row = res.data.data[0];
-      setDbStatus(`✅ ${row ? row.message : "Connected, but table is empty"}`);
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setDbStatus(`❌ ${err.response?.data?.message || err.message}`);
-      } else {
-        setDbStatus("❌ Unknown error");
+  useEffect(() => {
+    const subscription = authClient?.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (nextSession) {
+        setPreview(false);
+        setAuthOpen(false);
       }
-    }
-  };
+    }).data.subscription;
+    return () => subscription?.unsubscribe();
+  }, []);
+
+  function openAuth() {
+    authTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setShowLanding(false);
+    setAuthOpen(true);
+  }
+
+  function enterPreview() {
+    setAuthOpen(false);
+    setPreview(true);
+    setShowLanding(false);
+  }
+
+  function exitPreview() {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    setPreview(false);
+  }
+
+  function navigateHome(home: boolean) {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+    setShowLanding(home);
+  }
+
+  const hasArcade = Boolean(session || preview);
 
   return (
-    <div style={{ padding: 32 }}>
-      <h1>PandiWasto</h1>
-
-      <button onClick={checkBackend}>Check Backend</button>
-      <p>{backendStatus}</p>
-
-      <button onClick={checkDatabase}>Check Database</button>
-      <p>{dbStatus}</p>
-
-      <DesignTest />
-    </div>
+    <>
+      {hasArcade && !showLanding
+        ? <Dashboard key={session?.user.id ?? "preview"} user={session?.user} onSignIn={openAuth} onExitPreview={exitPreview} onHome={() => navigateHome(true)} />
+        : <LandingPage returning={hasArcade} onOpenAuth={hasArcade ? () => navigateHome(false) : openAuth} />}
+      {!session && (
+        <SignInModal
+          open={authOpen}
+          onOpenChange={setAuthOpen}
+          onPreview={preview ? undefined : enterPreview}
+          returnFocus={() => authTrigger.current?.focus()}
+        />
+      )}
+    </>
   );
 }
 

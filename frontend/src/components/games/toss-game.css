@@ -1,0 +1,118 @@
+.toss-game { --toss-edge: #87a772; --toss-depth: #638154; }
+.toss-intro, .toss-stage {
+  border: 2px solid var(--toss-edge);
+  border-radius: clamp(22px, 4vw, 42px);
+  background-color: #e5f4d9;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto, cover;
+  box-shadow: 0 6px 0 #b7ce9d;
+}
+.toss-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .78fr);
+  align-items: center;
+  gap: clamp(12px, 4vw, 50px);
+  min-height: min(560px, 68vh);
+  padding: clamp(22px, 6vw, 68px);
+  background-image: linear-gradient(90deg, #fffbeaef 18%, #fbfff1b7 58%, #fbfff10c 95%), url("/games/toss-fair.webp");
+}
+.toss-intro h1 {
+  margin: 13px 0;
+  color: var(--pw-accent);
+  font-family: var(--font-display, "Figtree Variable", sans-serif);
+  font-size: clamp(49px, 8.4vw, 114px);
+  line-height: .87;
+  text-wrap: balance;
+}
+.toss-intro-copy { max-width: 40ch; font-size: clamp(16px, 2.2vw, 22px); font-weight: 700; line-height: 1.4; }
+.toss-intro > img { width: min(100%, 435px); height: auto; margin: auto; filter: drop-shadow(0 14px 16px #4c63413b); }
+.toss-stage {
+  display: grid;
+  place-items: center;
+  min-height: clamp(232px, 32vw, 365px);
+  padding: clamp(12px, 3vw, 36px);
+  background-image: linear-gradient(#e9fbf116, #f4fbdb40), url("/games/toss-fair.webp");
+}
+.toss-board {
+  width: min(100%, 835px);
+  padding: clamp(12px, 3vw, 26px);
+  border: 2px solid #a3b690;
+  border-radius: clamp(16px, 3vw, 28px);
+  background: #fffdf6f5;
+  text-align: center;
+  box-shadow: 0 4px 0 #80a06d6e;
+}
+.toss-board h1 { font-size: clamp(17px, 2.9vw, 30px); line-height: 1.1; color: var(--pw-accent); font-weight: 850; }
+.toss-sentence {
+  margin-block: clamp(10px, 1.6vw, 18px);
+  font-size: clamp(20px, 3.6vw, 40px);
+  font-weight: 850;
+  letter-spacing: -.027em;
+  line-height: 1.45;
+}
+.toss-slot { display: inline-block; min-width: clamp(120px, 19vw, 195px); max-width: 100%; padding: 3px 9px; border: 2px dashed #779978; border-radius: 10px; color: #3d644d; background: #edf7e0; font-size: clamp(14px, 2.1vw, 22px); vertical-align: .12em; }
+.toss-slot[data-filled="true"] { border-style: solid; background: #fff2ca; }
+.toss-slot[data-over="true"] { outline: 3px solid #578449; outline-offset: 3px; background: #daf494; }
+.toss-slot[data-solved="true"] { border-color: #719465; color: #315c43; background: #e0f2d2; }
+.toss-root { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 9px; border-radius: 8px; background: #e6effb; color: #2c546b; font-size: 13px; font-weight: 650; }
+.toss-root strong { font-weight: 900; }
+
+.toss-tile-tray { margin-top: 15px; padding: clamp(9px, 2vw, 16px); border: 1px solid #d4e1ce; border-radius: 16px; background: var(--pw-surface); }
+.toss-tile-tray p { margin-bottom: 7px; color: #3f604d; font-size: 13px; font-weight: 750; text-align: center; }
+.toss-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(7px, 1.4vw, 13px); }
+.toss-tile[data-type="unlapi"] { --tile-surface: #dff4c4; --tile-edge: #83a365; }
+.toss-tile[data-type="gitlapi"] { --tile-surface: #dceefb; --tile-edge: #789fc4; }
+.toss-tile[data-type="hulapi"] { --tile-surface: #fff1b8; --tile-edge: #b3984a; }
+.toss-tile[data-type="kabilaan"] { --tile-surface: #f5e0f0; --tile-edge: #b080aa; }
+.toss-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 53px;
+  padding: 6px 8px;
+  touch-action: none;
+  user-select: none;
+  border: 2px solid var(--tile-edge);
+  border-radius: 13px;
+  background: var(--tile-surface);
+  color: var(--pw-ink);
+  box-shadow: 0 3px 0 var(--tile-edge);
+  font-family: "Figtree Variable", sans-serif;
+  font-size: clamp(17px, 3vw, 28px);
+  line-height: 1.15;
+  font-weight: 900;
+  cursor: grab;
+}
+.toss-tile span { overflow-wrap: anywhere; }
+.toss-tile svg { flex-shrink: 0; color: #465f4f; }
+.toss-tile:hover:enabled { filter: brightness(1.04); }
+.toss-tile[aria-pressed="true"] { outline: 3px solid #52794e; outline-offset: 2px; }
+.toss-tile[data-dragging="true"] { opacity: .42; }
+.toss-tile:disabled { cursor: default; }
+.toss-tile-overlay { min-width: 124px; rotate: -4deg; pointer-events: none; box-shadow: 0 7px 14px #34493052; }
+.toss-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.toss-toolbar .pop-quiet[aria-pressed="true"] { background: #fff0b3; }
+.toss-check { margin-inline-start: auto; }
+.toss-feedback { min-height: 30px; margin-top: 8px; padding: 5px 8px; border-radius: 10px; color: #355644; text-align: center; font-size: 14px; font-weight: 700; }
+.toss-feedback[data-error="true"] { background: #ffebd6; color: #793f28; }
+.toss-explanation { color: #42544a; font-size: 14px; line-height: 1.45; }
+.toss-results { border-color: var(--toss-edge); box-shadow: 0 6px 0 #b7ce9d; }
+.toss-celebration > img { animation: toss-reward .38s ease-out both; }
+@keyframes toss-reward { 0% { scale: .72; rotate: -9deg; } 55% { scale: 1.12; rotate: 5deg; } 100% { scale: 1; rotate: 0deg; } }
+@media (max-width: 650px) {
+  .toss-intro { grid-template-columns: minmax(0, 1fr); text-align: center; background-image: linear-gradient(#fffdf628, #fcfae8f5 72%), url("/games/toss-fair-mobile.webp"); }
+  .toss-intro > img { grid-row: 1; width: min(100%, 173px); }
+  .toss-intro-copy { margin-inline: auto; }
+  .toss-stage { background-image: linear-gradient(#e9fbf116, #f4fbdb40), url("/games/toss-fair-mobile.webp"); background-size: auto, 100% 100%; }
+  .toss-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .toss-tile { min-height: 46px; }
+}
+@media (max-width: 355px) {
+  .toss-toolbar .pop-button { padding-inline: 7px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toss-celebration > img { animation: none; }
+}

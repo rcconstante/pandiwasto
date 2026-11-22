@@ -1,0 +1,29 @@
+.arcade-cue { display: inline-flex; align-items: center; gap: 7px; vertical-align: middle; }
+.arcade-cue svg { flex: 0 0 auto; }
+.arcade-cue[data-tone="correct"] { color: #245b41; animation: arcade-pop .35s ease-out; }
+.arcade-cue[data-tone="correct"] svg { fill: #ffe288; }
+.arcade-cue[data-tone="retry"] { color: #7c4237; animation: arcade-wiggle .28s ease-out; }
+.arcade-score-gain { display: inline-block; animation: arcade-pop .31s ease-out; }
+
+.arcade-hearts {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid #e4bed0;
+  border-radius: 999px;
+  background: #fff9f4;
+  color: #aa5b79;
+}
+.arcade-hearts svg { flex: 0 0 auto; width: clamp(16px, 4.8vw, 21px); height: auto; }
+.arcade-hearts [data-full="true"] { fill: #f29ab6; }
+.arcade-hearts [data-full="false"] { color: #b2859b; animation: arcade-heart-loss .36s ease-out; }
+
+@keyframes arcade-pop { 0%, 100% { scale: 1; } 45% { scale: 1.08; } }
+@keyframes arcade-wiggle { 0%, 100% { translate: 0; } 25% { translate: -3px; } 68% { translate: 3px; } }
+@keyframes arcade-heart-loss { from { scale: 1.2; rotate: -8deg; } to { scale: 1; rotate: 0deg; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .arcade-cue[data-tone], .arcade-score-gain, .arcade-hearts [data-full="false"] { animation: none; }
+}

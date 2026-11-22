@@ -1,75 +1,18 @@
-# React + TypeScript + Vite
+# PandiWasto frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This workspace contains the landing page, email sign-in, learner dashboard, and seven Filipino morphology games. Use the [project README](../README.md) for setup and gameplay rules.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Run `npm install` and `npm run dev` from `frontend`. Open **Log in → Preview the dashboard** to play with a local profile. Use `npm run build` and `npm run lint` to check changes.
 
-## React Compiler
+For email accounts, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_API_URL` in `.env.local`. Signup assigns a display name and one of ten avatars. The header opens a read-only Profile with the player’s avatar, name, level, and XP. Use Settings to edit the avatar, display name, first name, last name, and optional gender.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Integration status
 
-## Expanding the ESLint configuration
+- **Account play.** The dashboard loads server-owned XP and best scores. All seven account games validate moves on the server. Preview uses device storage.
+- **Live rankings.** Signed-in rankings read the validated best scores from Supabase. Whack-a-Word practice earns XP outside Rankings.
+- **Mastery and hints.** Lessons displays mastery for skills with qualifying account answers. The optional Gemini adapter for Pop Goes the Word and its authored fallback run on the server.
+- **Admin and Study.** Authorized accounts can review scores, moderate rankings, manage cohorts and assessments, and download pseudonymized exports. Invited learners can review participation, play, and complete their assessments in Study.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+See the [rollout and acceptance plan](../IMPLEMENTATION.md) for staging setup, security acceptance checks, and study requirements.
