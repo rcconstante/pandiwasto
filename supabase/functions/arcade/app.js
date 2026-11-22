@@ -27,7 +27,11 @@ const moderationBody = z.strictObject({
   hidden: z.boolean(),
   reason: z.string().trim().min(1).max(300),
 });
-const progress = z.object({ xp: positiveCount, bestScores: z.record(z.string().regex(/^[1-7]$/), positiveCount) });
+const progress = z.object({
+  xp: positiveCount,
+  bestScores: z.record(z.string().regex(/^[1-7]$/), positiveCount),
+  developer: z.object({ available: z.boolean(), enabled: z.boolean() }).optional(),
+});
 const snapshot = z.object({
   runId: uuid,
   status: z.enum(["active", "completed", "abandoned"]),
@@ -246,6 +250,18 @@ export function createArcadeHandler({
   mountRankedRoutes(arcade, { ArcadeError, logError });
   mountAdminResearch(arcade, route);
   arcade.get("/progress", route({ name: "pandiwasto_arcade_progress", response: progress }));
+  arcade.post("/developer/mode", route({
+    name: "pandiwasto_developer_mode",
+    body: z.strictObject({ enabled: z.boolean() }),
+    args: (_params, input) => ({ enable_testing: input.enabled }),
+    response: progress,
+  }));
+  arcade.post("/developer/reset", route({
+    name: "pandiwasto_developer_reset",
+    body: z.strictObject({ scope: z.enum(["xp", "gameplay"]), requestId: uuid }),
+    args: (_params, input) => ({ reset_scope: input.scope, reset_id: input.requestId }),
+    response: progress,
+  }));
   arcade.get("/mastery", route({ name: "pandiwasto_arcade_mastery", response: mastery }));
   arcade.get("/admin/status", route({ name: "pandiwasto_arcade_admin_status", response: adminStatus }));
   arcade.post("/admin/scores/moderate", route({

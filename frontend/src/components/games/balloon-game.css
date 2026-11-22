@@ -210,3 +210,4 @@
   .pop-balloon-art, .pop-balloon[aria-pressed="true"]:enabled::after, .pop-celebration, .pop-celebration-sparks i::before { animation: none; }
   .pop-celebration-sparks { display: none; }
 }
+.pop-test-play { width: fit-content; margin: 8px auto 16px; padding: 6px 12px; border-radius: 14px; background: #efe7fb; color: #443165; text-align: center; font-size: 14px; font-weight: 800; }

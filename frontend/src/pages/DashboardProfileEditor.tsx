@@ -64,6 +64,7 @@ export function DashboardProfileEditor({ profile, photoUrl, userId, onSave }: {
       gender: readGender(values.get("gender")),
       avatar,
       photoPath: useAvatar ? null : profile.photoPath,
+      visibility: values.get("visibility") === "private" ? "private" : "public",
     };
 
     setPending(true);
@@ -83,6 +84,7 @@ export function DashboardProfileEditor({ profile, photoUrl, userId, onSave }: {
         gender: next.gender,
         avatar: next.avatar,
         photo_path: next.photoPath,
+        profile_visibility: next.visibility,
       } });
       if (error) throw error;
       onSave(next);
@@ -138,6 +140,9 @@ export function DashboardProfileEditor({ profile, photoUrl, userId, onSave }: {
           </div>
           <ArcadeSelect name="gender" label="Gender (optional)" defaultValue={profile.gender || "unset"} disabled={pending}
             options={[{ value: "unset", label: "Select an option" }, ...GENDER_OPTIONS.map((option) => ({ value: option, label: option }))]} />
+          <ArcadeSelect name="visibility" label="Profile visibility" defaultValue={profile.visibility} disabled={pending}
+            options={[{ value: "public", label: "Public" }, { value: "private", label: "Private" }]} />
+          <small className="pwd-visibility-note">Public shows your arcade alias, avatar, level, and scores to signed-in players. Private hides them from other players.</small>
           <button className="pwd-save pwd-profile-save" type="submit" disabled={pending}><Save size={17} aria-hidden="true" /> {pending ? "Saving…" : "Save profile"}</button>
           {feedback && <p className="pwd-feedback" role={feedback.error ? "alert" : "status"}>{feedback.message}</p>}
         </form>

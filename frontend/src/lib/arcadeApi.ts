@@ -54,6 +54,9 @@ export async function arcadeRequest<T>(path: string, body?: object, signal?: Abo
 }
 
 export const loadAccountProgress = (signal?: AbortSignal) => arcadeRequest<ArcadeProgress>("progress", undefined, signal);
+export const setDeveloperMode = (enabled: boolean) => arcadeRequest<ArcadeProgress>("developer/mode", { enabled });
+export const resetDeveloperProgress = (scope: "xp" | "gameplay", requestId: string) =>
+  arcadeRequest<ArcadeProgress>("developer/reset", { scope, requestId });
 export const loadMastery = (signal?: AbortSignal) =>
   arcadeRequest<{ skills: { skillId: string; mastery: number; attempts: number }[] }>("mastery", undefined, signal);
 export const loadAdminStatus = (signal?: AbortSignal) =>

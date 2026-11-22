@@ -1,14 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { ArrowLeft, ArrowRight, ChevronDown, Lock, LogOut, Play, Settings, ShieldCheck, Star, Trophy, UserRound } from "lucide-react";
-import { DropdownMenu, Tabs } from "radix-ui";
+import { Dialog, DropdownMenu, Tabs } from "radix-ui";
 import { authClient } from "@/lib/auth";
 import { ArcadeRequestError, getStudyState, loadAccountProgress, loadAdminStatus, loadMastery } from "@/lib/arcadeApi";
 import { BalloonGame } from "@/components/games/BalloonGame";
 import { XP_PER_LEVEL, type ArcadeProgress } from "@/data/arcadeProgress";
 import { BALLOON_GAME_ID } from "@/data/balloonGame";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
-import { MINIGAMES } from "@/data/landingData";
+import { MINIGAMES, type MinigameItem } from "@/data/landingData";
 import { avatarSrc, type ProfileDetails, readProfile } from "@/data/dashboardProfile";
 import { readPlayerPhoto } from "@/lib/playerPhoto";
 import { DashboardProfile } from "./DashboardProfile";
@@ -46,6 +46,7 @@ export function Dashboard({ user, onHome }: {
   const [gameIndex, setGameIndex] = useState(0);
   const [gameDirection, setGameDirection] = useState(0);
   const [gameOpen, setGameOpen] = useState(false);
+  const [lockedGame, setLockedGame] = useState<MinigameItem | null>(null);
   const [accountProgress, setAccountProgress] = useState<ArcadeProgress | null>(null);
   const [accountError, setAccountError] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -69,10 +70,12 @@ export function Dashboard({ user, onHome }: {
   const gameStatus = accountError ? "Games unavailable" : canStartGames ? "Ready to play" : "Loading account progress…";
   const tabs = admin ? [...TABS, { id: "admin", label: "Admin" }] : TABS;
   const studyPractice = studyState === "practice";
+  const developerMode = accountProgress?.developer?.enabled === true;
+  const allGamesUnlocked = studyPractice || developerMode;
   const level = accountProgress ? 1 + Math.floor(accountProgress.xp / XP_PER_LEVEL) : null;
   const playerName = profile.displayName || "Player";
   const firstName = profile.firstName || playerName.split(/\s+/)[0];
-  const locked = level !== null && !studyPractice && currentGame.unlockLevel > level;
+  const locked = level !== null && !allGamesUnlocked && currentGame.unlockLevel > level;
   const personalBest = accountProgress?.bestScores[currentGame.id] ?? 0;
   const photoUrl = photo?.path === profile.photoPath ? photo.url : undefined;
 
@@ -146,7 +149,9 @@ export function Dashboard({ user, onHome }: {
   function openCard(index: number, direction: number) {
     const game = MINIGAMES[index];
     chooseGame(index, direction);
-    if (canStartGames && level !== null && (studyPractice || game.unlockLevel <= level)) {
+    if (level !== null && !allGamesUnlocked && game.unlockLevel > level) {
+      setLockedGame(game);
+    } else if (canStartGames) {
       setGameOpen(true);
     } else if (index !== gameIndex) {
       requestAnimationFrame(() => currentCard.current?.focus());
@@ -177,11 +182,11 @@ export function Dashboard({ user, onHome }: {
 
   if (gameOpen) {
     if (currentGame.id === BALLOON_GAME_ID) {
-      return <BalloonGame personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />;
+      return <BalloonGame testPlay={developerMode} personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />;
     }
     return (
       <Suspense fallback={<main className="pw-dashboard"><p className="pwd-content" role="status">Opening the game…</p></main>}>
-        <RankedGame gameId={currentGame.id} personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />
+        <RankedGame testPlay={developerMode} gameId={currentGame.id} personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />
       </Suspense>
     );
   }
@@ -243,6 +248,7 @@ export function Dashboard({ user, onHome }: {
 
           <Tabs.Content value="games" className="pwd-games">
             <h2 className="sr-only">Choose a game</h2>
+            {developerMode && <p className="pwd-game-message" role="status">Developer mode is on. All seven games are unlocked for testing.</p>}
             {studyPractice && canStartGames && <p className="pwd-game-message" role="status">Study practice is open. All seven games are available.</p>}
             <div className="pwd-carousel" role="region" aria-label="Games carousel">
               <button type="button" className="pwd-arrow" aria-label="Previous game" onClick={() => chooseGame(gameIndex - 1)}><ArrowLeft aria-hidden="true" /></button>
@@ -250,7 +256,7 @@ export function Dashboard({ user, onHome }: {
                 {[-1, 0, 1].map((offset) => {
                   const index = (gameIndex + offset + MINIGAMES.length) % MINIGAMES.length;
                   const game = MINIGAMES[index];
-                  const isLocked = level !== null && !studyPractice && game.unlockLevel > level;
+                  const isLocked = level !== null && !allGamesUnlocked && game.unlockLevel > level;
                   const card = (
                     <>
                       <span className="pwd-game-lesson">{game.lesson}</span>
@@ -268,6 +274,7 @@ export function Dashboard({ user, onHome }: {
                       type="button"
                       className={`pwd-game-card ${offset === 0 ? "pwd-current" : "pwd-side"}`}
                       onClick={() => openCard(index, offset)}
+                      aria-haspopup={isLocked ? "dialog" : undefined}
                       aria-label={isLocked ? `${game.gameName}, locked until Level ${game.unlockLevel}` : `${canStartGames ? "Play" : "View"} ${game.gameName}`}
                     >
                       {card}
@@ -277,6 +284,25 @@ export function Dashboard({ user, onHome }: {
               </div>
               <button type="button" className="pwd-arrow" aria-label="Next game" onClick={() => chooseGame(gameIndex + 1)}><ArrowRight aria-hidden="true" /></button>
             </div>
+            <Dialog.Root open={lockedGame !== null} onOpenChange={(open) => { if (!open) setLockedGame(null); }}>
+              <Dialog.Portal>
+                <Dialog.Overlay className="pw-modal-overlay" />
+                <Dialog.Content className="pw-modal pwd-action-dialog pwd-locked-dialog" onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  currentCard.current?.focus();
+                }}>
+                  <img src={`${base}dashboard/locked.webp`} alt="" width="108" height="108" />
+                  <Dialog.Title>Game locked</Dialog.Title>
+                  <Dialog.Description>
+                    <strong>{lockedGame?.gameName}</strong> unlocks at Level {lockedGame?.unlockLevel}.
+                    {lockedGame && accountProgress && (
+                      <span>Earn {Math.max(0, (lockedGame.unlockLevel - 1) * XP_PER_LEVEL - accountProgress.xp).toLocaleString()} more XP to play.</span>
+                    )}
+                  </Dialog.Description>
+                  <Dialog.Close className="pwd-save">Back to games</Dialog.Close>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
 
             <div className="pwd-dots" role="group" aria-label="Pick a game">
               {MINIGAMES.map((game, index) => (
@@ -335,6 +361,12 @@ export function Dashboard({ user, onHome }: {
               profile={profile}
               photoUrl={photoUrl}
               onSaveProfile={setProfile}
+              progress={accountProgress}
+              onProgressChange={(next) => {
+                setMastery([]);
+                setAccountProgress(next);
+                setRefresh((count) => count + 1);
+              }}
               user={user}
               onLeave={exit}
               leaving={leaving}

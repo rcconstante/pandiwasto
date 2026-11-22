@@ -29,6 +29,7 @@ export interface ProfileDetails {
   gender: ProfileGender;
   avatar: AvatarId;
   photoPath: string | null;
+  visibility: "public" | "private";
 }
 
 const LEGACY_AVATARS = new Map<string, AvatarId>([
@@ -73,5 +74,6 @@ export function readProfile(user: User): ProfileDetails {
     gender: readGender(metadata?.gender),
     avatar: readAvatar(metadata?.avatar) ?? defaultAvatar(user.id),
     photoPath: owner === user.id && /^[a-f0-9-]{36}\.jpg$/.test(filename ?? "") && !remainder.length ? candidate : null,
+    visibility: metadata?.profile_visibility === "private" ? "private" : "public",
   };
 }

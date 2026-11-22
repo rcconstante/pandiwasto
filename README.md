@@ -61,6 +61,19 @@ The arcade has animated score updates, visual success and retry cues, and a soun
 
 The server validates account game moves before saving XP, levels, and best scores. Signed-in Rankings shows generated aliases, avatars, levels, and validated scores. Whack-a-Word practice earns XP and stays out of Rankings. The header avatar opens the menu for Profile, Settings, and Sign out.
 
+New accounts start with a private profile. Players can make their alias, arcade avatar, level, and scores visible to other signed-in players in Settings. Uploaded photos remain private.
+
+### Developer test accounts
+
+An authorized Supabase operator can enable developer controls for a confirmed account by adding its Auth user ID in the SQL Editor.
+
+```sql
+insert into pandiwasto_private.arcade_developers (player_id)
+values ('YOUR-AUTH-USER-UUID') on conflict do nothing;
+```
+
+The account can then enable Developer mode from Settings to open all seven games. Test play leaves account XP, leaderboard scores, mastery, and study records out of its results. The separate reset controls act on the testing account and require confirmation. Apply the developer mode and profile visibility migrations before deploying the updated Edge Function and frontend.
+
 ## Deploy
 
 From the repository root, sign in to the Supabase CLI and deploy the function to the project where you applied the migrations. Replace `YOUR_PROJECT_REF` with the project reference.

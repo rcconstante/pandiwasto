@@ -16,8 +16,9 @@ const COLORS = ["grape", "coral", "aqua", "gold"];
 const CELEBRATION_SPARKS = Array.from({ length: 12 }, (_, index) => index);
 const STARTING_HEARTS = 3;
 
-export function BalloonGame({ personalBest, onComplete, onExit }: {
+export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   personalBest: number;
+  testPlay: boolean;
   onComplete: (score: number, xp: number) => void;
   onExit: () => void;
 }) {
@@ -81,7 +82,7 @@ export function BalloonGame({ personalBest, onComplete, onExit }: {
   }
 
   function finishRun(finalScore: number, xp: number) {
-    setNewBest(finalScore > personalBest);
+    setNewBest(!testPlay && finalScore > personalBest);
     onComplete(finalScore, xp);
   }
 
@@ -236,6 +237,7 @@ export function BalloonGame({ personalBest, onComplete, onExit }: {
             {muted ? <VolumeX size={19} aria-hidden="true" /> : <Volume2 size={19} aria-hidden="true" />}
           </button>
         </header>
+        {testPlay && <p className="pop-test-play">Test play · Account XP and scores stay unchanged</p>}
 
         <Dialog.Root open={confirmExit} onOpenChange={setConfirmExit}>
           <Dialog.Portal>
@@ -384,7 +386,7 @@ export function BalloonGame({ personalBest, onComplete, onExit }: {
             )}
             <div className="pop-result-stats">
               <div><span>Score</span><strong>{points}<small>/{maxPoints}</small></strong></div>
-              <div><span>XP earned</span><strong>+{earnedXp}</strong></div>
+              <div><span>{testPlay ? "Test XP" : "XP earned"}</span><strong>+{earnedXp}</strong></div>
               <div><span>{newBest ? "New best!" : "Personal best"}</span><strong>{personalBest}</strong></div>
             </div>
             <div className="pop-root-recap" aria-label="Root words found">{results.map((result, index) => <span key={index}>{result.root}</span>)}</div>

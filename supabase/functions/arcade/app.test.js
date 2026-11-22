@@ -85,6 +85,29 @@ Deno.test("The public key cannot authorize an arcade request and only confirmed 
   assert.equal(verified, 2);
 });
 
+Deno.test("Developer controls use the verified account and reject client-supplied targets", async () => {
+  let requests = 0;
+  const fetch = requestFor({ supabase: {
+    auth: { getUser: async () => authUser() },
+    rpc: async (operation, args) => {
+      requests++;
+      assert.equal(args.account_id, player);
+      if (operation === "pandiwasto_developer_mode") {
+        assert.equal(args.enable_testing, true);
+        return { error: { code: "PT403" } };
+      }
+      assert.equal(operation, "pandiwasto_developer_reset");
+      assert.deepEqual(args, { account_id: player, reset_scope: "xp", reset_id: attempt });
+      return { data: { xp: 0, bestScores: {}, developer: { available: true, enabled: true } } };
+    },
+  } });
+  assert.equal((await fetch("/arcade/developer/mode", post({ enabled: true }))).status, 403);
+  assert.equal((await fetch("/arcade/developer/reset", post({ scope: "xp", requestId: attempt, target: run }))).status, 400);
+  const reset = await fetch("/arcade/developer/reset", post({ scope: "xp", requestId: attempt }));
+  assert.deepEqual(await reset.json(), { xp: 0, bestScores: {}, developer: { available: true, enabled: true } });
+  assert.equal(requests, 2);
+});
+
 Deno.test("Zod rejects client-controlled scoring and returns only public snapshot fields", async () => {
   const calls = [];
   const fetch = requestFor({ supabase: {

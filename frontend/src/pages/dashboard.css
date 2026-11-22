@@ -256,3 +256,23 @@
   .pwd-header-profile svg { display: none; }
   .pwd-ranking-table th, .pwd-ranking-table td { padding-inline: 4px; }
 }
+.pw-modal.pwd-action-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(calc(100vw - 32px), 440px);
+  padding: clamp(19px, 5vw, 29px);
+  border-color: #d9e2d0;
+}
+.pwd-action-dialog h2 { padding: 0; }
+.pwd-action-dialog p { color: #365645; }
+.pwd-action-dialog [role="alert"] { color: #a2253f; }
+.pwd-action-dialog.pwd-locked-dialog { justify-items: center; text-align: center; background: linear-gradient(150deg, #fffdf5 20%, #ecf5d9); }
+.pwd-locked-dialog img { object-fit: contain; }
+.pwd-locked-dialog p span { display: block; margin-top: 4px; }
+.pwd-locked-dialog .pwd-save { justify-self: center; background: var(--pw-brand-gradient); border-color: #9ebe62; }
+.pwd-visibility-note { color: var(--pw-accent); }
+.pwd-settings .pwd-developer { background: #f0edf9; border-color: #dcd3ec; }
+.pwd-developer p { margin-bottom: 10px; }
+.pwd-developer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pwd-save.pwd-reset { color: #942842; background: #fff0f1; border-color: #e9bcc4; }
+.pwd-save.pwd-reset:hover { background: #ffe2e7; }

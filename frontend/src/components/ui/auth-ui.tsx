@@ -54,7 +54,7 @@ export function SignInModal({ open, onOpenChange, returnFocus }: {
           ...credentials,
           options: {
             emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
-            data: { display_name: createNickname(), avatar: randomAvatar() },
+            data: { display_name: createNickname(), avatar: randomAvatar(), profile_visibility: "private" },
           },
         })
         : await authClient.signInWithPassword(credentials);

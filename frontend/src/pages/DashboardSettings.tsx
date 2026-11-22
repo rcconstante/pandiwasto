@@ -2,12 +2,16 @@ import { useState, type FormEvent } from "react";
 import type { User, UserAttributes } from "@supabase/supabase-js";
 import { authClient } from "@/lib/auth";
 import type { ProfileDetails } from "@/data/dashboardProfile";
+import type { ArcadeProgress } from "@/data/arcadeProgress";
 import { DashboardProfileEditor } from "./DashboardProfileEditor";
+import { DeveloperSettings } from "./DeveloperSettings";
 
-export function DashboardSettings({ profile, photoUrl, onSaveProfile, user, onLeave, leaving }: {
+export function DashboardSettings({ profile, photoUrl, onSaveProfile, progress, onProgressChange, user, onLeave, leaving }: {
   profile: ProfileDetails;
   photoUrl?: string;
   onSaveProfile: (profile: ProfileDetails) => void;
+  progress: ArcadeProgress | null;
+  onProgressChange: (progress: ArcadeProgress) => void;
   user: User;
   onLeave: () => void;
   leaving: boolean;
@@ -70,6 +74,7 @@ export function DashboardSettings({ profile, photoUrl, onSaveProfile, user, onLe
             Sign out
           </button>
         </section>
+        {progress?.developer?.available && <DeveloperSettings enabled={progress.developer.enabled} onProgressChange={onProgressChange} />}
       </div>
       {feedback && <p className="pwd-feedback" role={feedback.error ? "alert" : "status"}>{feedback.message}</p>}
     </>

@@ -85,8 +85,8 @@ function ClawCabinet({ options, selected, rejected, locked, pick, grab, catching
   </div>;
 }
 
-export function RankedGame({ gameId, personalBest, onComplete, onExit }: {
-  gameId: number; personalBest: number; onComplete: () => void; onExit: () => void;
+export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit }: {
+  gameId: number; personalBest: number; testPlay: boolean; onComplete: () => void; onExit: () => void;
 }) {
   const [run, setRun] = useState<RankedSnapshot | null>(null);
   const [selected, setSelected] = useState("");
@@ -257,6 +257,7 @@ export function RankedGame({ gameId, personalBest, onComplete, onExit }: {
             {muted ? <VolumeX size={19} aria-hidden="true" /> : <Volume2 size={19} aria-hidden="true" />}
           </button>
         </header>
+        {testPlay && <p className="pop-test-play">Test play · Account XP and scores stay unchanged</p>}
 
         {(!run || run.status === "abandoned") && <section className={config.theme + "-intro ranked-intro"}>
           <div>
@@ -391,8 +392,8 @@ export function RankedGame({ gameId, personalBest, onComplete, onExit }: {
           {run.hearts === 0 && run.feedback && <p lang="fil">{run.feedback.text}</p>}
           <div className="pop-result-stats">
             <div><span>Score</span><strong>{run.score.toLocaleString()}</strong></div>
-            <div><span>XP earned</span><strong>+{run.xp.toLocaleString()}</strong></div>
-            <div><span>Personal best</span><strong>{Math.max(personalBest, run.mode === "ranked" ? run.score : 0).toLocaleString()}</strong></div>
+            <div><span>{testPlay ? "Test XP" : "XP earned"}</span><strong>+{run.xp.toLocaleString()}</strong></div>
+            <div><span>Personal best</span><strong>{Math.max(personalBest, !testPlay && run.mode === "ranked" ? run.score : 0).toLocaleString()}</strong></div>
           </div>
           {run.results.length > 0 && <div className="pop-root-recap" aria-label="Run review">
             {run.results.map((item, index) => <span key={index}>{item.text}</span>)}
