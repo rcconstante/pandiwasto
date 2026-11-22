@@ -5,6 +5,24 @@
 .ranked-play .pop-round-top { margin-bottom: 2px; }
 .ranked-play .whack-answers { margin-block: 5px 0; }
 .ranked-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ranked-meters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.ranked-meters .pop-progress, .ranked-meters .pop-score { white-space: nowrap; flex-wrap: nowrap; padding-inline: clamp(5px, 2vw, 11px); }
+.ranked-toss-actions { display: flex; flex-wrap: nowrap; justify-content: center; gap: clamp(4px, 1.4vw, 9px); }
+.ranked-toss-actions .pop-button { justify-content: center; min-height: 44px; padding-inline: clamp(6px, 2vw, 12px); gap: 4px; font-size: clamp(12px, 3.5vw, 16px); white-space: nowrap; }
+.ranked-toss-actions .pop-button svg { width: clamp(14px, 4vw, 17px); flex-shrink: 0; }
+.ranked-play[data-reaction="win"] .toss-slot { animation: arcade-pop var(--arcade-motion-ms) ease-out; background: #e3f6ce; }
+.ranked-play[data-reaction="miss"] .toss-slot { animation: arcade-wiggle var(--arcade-motion-ms) ease-out; background: #ffe2d9; }
+.ranked-play[data-reaction="win"] .memory-card[data-matched="true"] .memory-card-front { animation: arcade-pop var(--arcade-motion-ms) ease-out; }
+.ranked-play[data-reaction="miss"] .memory-card[data-miss="true"] .memory-card-front { animation: arcade-wiggle var(--arcade-motion-ms) ease-out; }
+.ranked-game .ticket-lever[data-pulling] .ticket-handle i { animation: ranked-lever var(--arcade-motion-ms) ease-out; }
+.ranked-game .fortune-choices { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(3px, 1vw, 8px); }
+.ranked-game .fortune-choice { min-height: 44px; min-width: 0; padding-inline: 3px; font-size: clamp(11px, 3.25vw, 17px); overflow-wrap: anywhere; }
+@keyframes ranked-lever { 38%, 63% { transform: rotate(22deg) translateY(2px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ranked-play[data-reaction] .toss-slot,
+  .ranked-play[data-reaction] .memory-card .memory-card-front,
+  .ranked-game .ticket-lever[data-pulling] .ticket-handle i { animation: none; }
+}
 .ranked-hint { padding: 9px 12px; border: 1px solid #e0c983; border-radius: 10px; background: #fff1ca; color: #654922; font-weight: 680; }
 .ranked-game .memory-card:disabled { cursor: default; }
 .ranked-game .ticket-machine .ranked-ticket { left: 49%; width: min(57%, 200px); }

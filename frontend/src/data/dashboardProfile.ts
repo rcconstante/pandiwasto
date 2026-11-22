@@ -47,16 +47,11 @@ export function readAvatar(value: unknown) {
     ?? (typeof value === "string" ? LEGACY_AVATARS.get(value) : undefined);
 }
 
-export function randomAvatar() {
-  return AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
-}
+/** Every learner starts with the same avatar until they pick another in Settings. */
+export const DEFAULT_AVATAR: AvatarId = "chick";
 
-function defaultAvatar(userId: string) {
-  let hash = 0;
-  for (let index = 0; index < userId.length; index++) {
-    hash = (Math.imul(hash, 31) + userId.charCodeAt(index)) >>> 0;
-  }
-  return AVATARS[hash % AVATARS.length].id;
+export function avatarFor(value: unknown) {
+  return readAvatar(value) ?? DEFAULT_AVATAR;
 }
 
 function readName(value: unknown, max: number, fallback = "") {
@@ -72,7 +67,7 @@ export function readProfile(user: User): ProfileDetails {
     firstName: readName(metadata?.first_name, 40),
     lastName: readName(metadata?.last_name, 40),
     gender: readGender(metadata?.gender),
-    avatar: readAvatar(metadata?.avatar) ?? defaultAvatar(user.id),
+    avatar: avatarFor(metadata?.avatar),
     photoPath: owner === user.id && /^[a-f0-9-]{36}\.jpg$/.test(filename ?? "") && !remainder.length ? candidate : null,
     visibility: metadata?.profile_visibility === "private" ? "private" : "public",
   };

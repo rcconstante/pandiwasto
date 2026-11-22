@@ -43,15 +43,15 @@ Players start at Level 1. Every 100 XP raises the player one level.
 
 | Game | Unlock | Lesson and controls | Scoring and XP |
 | --- | ---: | --- | --- |
-| Pop Goes the Word | 1 | **Salitang-Ugat**. Pop the extra letters. The game checks each pop and shows the root word when you solve it. | Five words with three hearts per run. Popping a needed letter immediately costs a heart. Each solution earns up to 100 points and 20 XP. Running out of hearts saves the points and XP already earned. |
-| Whack-a-Word | 3 | **Kayarian ng Salita**. Pick Payak, Maylapi, Tambalan, or Inuulit before the mole ducks. The 1–4 keys also select a type. | Three lives. Each correct answer earns 100 points and 10 XP. A miss or timeout costs one life. Untimed practice earns XP. Only timed runs save a best score. |
+| Pop Goes the Word | 1 | **Salitang-Ugat**. Pop the extra letters. The game checks each pop and reveals the root at the end of the word. | Five words. Each solution earns up to 100 points and 20 XP. |
+| Whack-a-Word | 3 | **Kayarian ng Salita**. Pick Payak, Maylapi, Tambalan, or Inuulit before the mole ducks. The 1–4 keys also select a type. | Ten words. Each correct answer earns 100 points and 10 XP. A miss or timeout costs one heart. Untimed practice earns XP. Only timed runs save a best score. |
 | Toss-a-Lapi | 5 | **Mga Panlapi**. Tap or drag an affix tile into each sentence. | Five rounds, up to 500 points, and 100 XP on completion. |
 | Memory Match | 7 | **Tambalan**. Flip cards in pairs to combine root words. Each board ends with a review of the compounds and their meanings. | Three boards with 6, 8, and 10 cards. Up to 1,200 points and 100 XP on completion. |
 | Ticket Stub Dispenser | 9 | **Pag-uulit**. Pull the Ganap or Parsiyal lever to print a pair of full tickets or a full ticket with a short stub. | Five rounds, up to 500 points, and 100 XP on completion. |
 | Claw Machine | 11 | **Pokus ng Pandiwa**. Aim with the arrow buttons or pick a doll, then press Grab. Each run covers Tagaganap, Layon, Ganapan, and Tagatanggap. | Five rounds, up to 500 points, and 100 XP on completion. |
 | Fortune Predict | 13 | **Asimilasyon**. Predict whether pang- becomes pam-, becomes pan-, or stays pang- when joined to a root word. Choose the word and print the card. | Five rounds, up to 500 points, and 100 XP on completion. |
 
-The arcade has animated score updates, visual success and retry cues, and a sound toggle in every game. Sound starts on. Motion effects respect the browser’s reduced-motion preference. Use the Lessons tab for examples and links to each game.
+Every word or Memory Match board starts with three hearts. A miss costs one heart. After the third miss, review the answer and move to the next word or board. The arcade has animated score updates, success and retry feedback, and a sound toggle in every game. Motion effects respect reduced-motion preferences. Use the Lessons tab for examples and links to each game.
 
 ## Account play and database setup
 
@@ -101,8 +101,17 @@ deno test --config supabase/functions/arcade/deno.json supabase/functions/arcade
 
 ## Administration and study
 
-- **Admin** can look up a score by player alias or account ID and hide or restore it with a recorded reason. Admins can also configure a cohort, add separate pre- and post-assessments, and invite approved participants.
+- **Admin** creates accounts with a temporary password, sets each account's role (student, teacher, or admin), and suspends or restores accounts. Admins create classes, assign a teacher, and add students by email, alias, or account ID. Admins also moderate scores, configure study cohorts and assessments, invite participants, and export assessments, attempts, and hints. Every role change and suspension is logged.
+- **Classes** (teachers and admins) shows a student × skill table of BKT mastery P(L), answer counts, and mastered skills, with a CSV download. Opening a student shows level, XP, best scores, hints shown, and the latest 50 answers with mastery before and after each one. Teachers see only their own classes, and the study condition stays hidden.
 - **Study** shows invitations, participation and withdrawal controls, assessments, and the scheduled practice window. The database assigns conditions privately and excludes withdrawn participants from future research exports.
-- **Mastery** in Lessons is based on recorded first unaided answers across the ten configured skills. Authored hints work locally. Account Pop Goes the Word supports the optional server-only Gemini provider and falls back to an authored hint on failure.
+- **Mastery** in Lessons is based on recorded first unaided answers across the ten configured skills and marks a skill as mastered at P(L) ≥ 0.95.
+- **Hints** follow a three-level ladder in every game except Whack-a-Word: a nudge, the lesson rule, then lesson examples that never show the item's answer. With `GEMINI_API_KEY` set, the server rephrases each level and falls back to the authored text on timeout, leak, cap, or failure. Every hint is logged with its level, source, model, latency, and the learner's mastery.
+
+### BKT engine
+
+- `supabase/functions/arcade/bkt.ts` holds the tested reference formulas. The database applies the same update in one function, `pandiwasto_private.bkt_apply`.
+- P(L0) is the learner's pretest subscore for the skill, clamped to [0.1, 0.9], or 0.3 without one. P(G) is each game's chance level.
+- Every change to a skill's parameters raises its `param_version`, and every scored answer records that version.
+- After a pilot, fit a skill from Admin "Game attempts" exports: `deno run --allow-read scripts/fit-bkt.ts --skill asimilasyon --guess 0.33 page-1.json`.
 
 The [implementation plan](IMPLEMENTATION.md) lists the database rollout, backend and admin interfaces, per-game validation work, security tests, and research dependencies. See also the [technical draft](Technical-draft) and [research brief](skill.md).

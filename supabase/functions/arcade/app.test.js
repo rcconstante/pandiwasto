@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createArcadeHandler } from "./app.js";
-import { resolveHint } from "./hints.js";
+import { createHintResolver, hintLadder } from "./hints.js";
 
 const player = "87e015a2-d2de-4fd0-8bc2-746cbb27f309";
 const run = "4947bafb-8fcb-41ec-bc0f-6f59731fbba0";
 const attempt = "e8d9d944-5da2-4231-ba77-2037da4a0662";
 const token = "signed.header.signature";
-const snapshot = { runId: run, status: "active", round: 0, totalRounds: 5, hearts: 3, score: 0, xp: 0, word: "SUMAKAY", hintUsed: false, hadMiss: false };
+const snapshot = { runId: run, status: "active", round: 0, totalRounds: 5, hearts: 3, score: 0, xp: 0, word: "SUMAKAY", hintUsed: false, hintLevel: 0, hadMiss: false };
 
 function requestFor(options = {}) {
   const handle = createArcadeHandler({ ...options, logError: () => {} });
@@ -177,22 +177,111 @@ Deno.test("Balloon taps use the authenticated run and keep the root private afte
   assert.equal("root" in result, false);
 });
 
-Deno.test("Hints default to the authored rule and guard direct answers from a future provider", async () => {
+Deno.test("Hints default to the authored rule and guard direct answers from a provider", async () => {
   const rule = "Tingnan kung aling mga titik ang idinagdag sa loob.";
-  const item = { text: rule, word: "SUMAKAY", root: "SAKAY" };
-  assert.equal(await resolveHint(item), rule);
-  assert.equal(await resolveHint(item, async () => "Ang sagot ay s a k a y."), rule);
-  assert.equal(await resolveHint(item, async () => { throw new Error("offline"); }), rule);
+  const request = { text: rule, level: 1, word: "SUMAKAY", secrets: ["SAKAY"], cacheKey: "1:SUMAKAY" };
+  assert.equal((await createHintResolver()(request)).source, "authored");
+  assert.equal((await createHintResolver(async () => "Ang sagot ay s a k a y.")(request)).text, rule);
+  assert.equal((await createHintResolver(async () => { throw new Error("offline"); })(request)).text, rule);
+
+  let calls = 0;
+  const provider = Object.assign(async () => { calls++; return "Hanapin ang idinagdag na titik."; }, { model: "test-model" });
+  const resolve = createHintResolver(provider, { hourlyLimit: 1 });
+  assert.deepEqual({ ...(await resolve(request)), latencyMs: 0 }, { text: "Hanapin ang idinagdag na titik.", source: "ai", model: "test-model", latencyMs: 0, cacheHit: false });
+  assert.equal((await resolve(request)).cacheHit, true);
+  assert.equal((await resolve({ ...request, level: 2 })).source, "authored", "the hourly cap falls back to authored text");
+  assert.equal(calls, 1);
+  assert.equal((await createHintResolver(provider)({ ...request, level: 3, cacheKey: "l3" })).source, "authored", "level 3 keeps the reviewed example");
+  assert.equal(calls, 1);
+});
+
+Deno.test("The hint ladder moves from nudge to rule to examples without the answer", async () => {
+  assert.equal(hintLadder(3, 1, "Tingnan ang unahan.", ["maglaro"]), "Tingnan ang unahan.");
+  const rule = hintLadder(3, 2, "", ["maglaro"]);
+  for (const affix of ["unlapi", "gitlapi", "hulapi", "kabilaan"]) assert.match(rule.toLowerCase(), new RegExp(affix));
+  const examples = hintLadder(3, 3, "", ["linisin"]);
+  assert.match(examples, /^Halimbawa: /);
+  for (const word of ["maglaro", "sumulat", "basahin", "pag-aralan"]) assert.ok(examples.includes(word), "no example is dropped: " + word);
+  assert.equal(hintLadder(3, 3, "", ["maglaro"]), rule, "an example that shows the answer word falls back to the rule");
+  assert.equal(hintLadder(6, 3, "", ["Tagaganap"]), hintLadder(6, 2, "", []));
+
+  const secrets = ["linisin", "-in"];
+  const resolve = createHintResolver(async () => "Hanapin ang hulapi sa dulo ng salita.");
+  assert.equal((await resolve({ text: "x", level: 1, word: "w", secrets, cacheKey: "a" })).source, "ai", "a short affix only matches a whole word");
+  const pop = { text: "x", level: 1, word: "MAGSIPILYO", secrets: ["SIPILYO"], cacheKey: "pop" };
+  assert.equal((await createHintResolver(async () => "Hanapin ang unlapi sa MAGSIPILYO.")(pop)).source, "ai", "repeating the puzzle word is allowed");
+  assert.equal((await createHintResolver(async () => "Ang ugat ay sipilyo.")({ ...pop, cacheKey: "pop2" })).source, "authored", "the root alone still leaks");
+  const failing = createHintResolver(async () => { throw new Error("Gemini HTTP 403 PERMISSION_DENIED"); });
+  assert.equal((await failing({ text: "x", level: 1, word: "w", secrets, cacheKey: "c" })).source, "authored", "provider errors fall back");
+  const leaked = createHintResolver(async () => "Gamitin ang -in dito.");
+  assert.equal((await leaked({ text: "x", level: 1, word: "w", secrets, cacheKey: "b" })).source, "authored");
+});
+
+Deno.test("Pop hints request a ladder level, log fresh hints, and send no account data to the provider", async () => {
+  const item = { level: 2, fresh: true, text: "May gitlapi.", word: "SUMAKAY", root: "SAKAY", skill: "salitang-ugat" };
+  const calls = [];
   const fetch = requestFor({
-    supabase: { auth: { getUser: async () => authUser() }, rpc: async () => ({ data: item }) },
+    supabase: { auth: { getUser: async () => authUser() }, rpc: async (name, args) => { calls.push([name, args]); return { data: name === "pandiwasto_pop_hint" ? item : null }; } },
     hintProvider: async (content) => {
-      assert.deepEqual(Object.keys(content).sort(), ["game", "language", "rule", "signal", "word"]);
-      return "Hanapin ang idinagdag na titik sa loob ng salita.";
+      assert.deepEqual(Object.keys(content).sort(), ["fact", "level", "rule", "signal", "word", "wrong"]);
+      assert.equal(content.level, 2);
+      return "Alalahanin ang ugat ng salita.";
     },
   });
-  const reply = await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0 }));
+  assert.equal((await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0, level: 4 }))).status, 400);
+  const reply = await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0, level: 2 }));
   assert.equal(reply.status, 200);
-  assert.deepEqual(await reply.json(), { text: "Hanapin ang idinagdag na titik sa loob ng salita." });
+  assert.deepEqual(await reply.json(), { text: "Alalahanin ang ugat ng salita.", level: 2 });
+  assert.deepEqual(calls[0], ["pandiwasto_pop_hint", { active_run: run, expected_round: 0, requested_level: 2, account_id: player }]);
+  assert.equal(calls[1][0], "pandiwasto_hint_log");
+  assert.equal(calls[1][1].hint_source, "ai");
+  assert.equal(calls[1][1].skill, "salitang-ugat");
+});
+
+Deno.test("Suspended accounts cannot use the arcade", async () => {
+  const fetch = requestFor({ supabase: {
+    auth: { getUser: async () => ({ data: { user: { ...authUser().data.user, banned_until: "2999-01-01T00:00:00Z" } }, error: null }) },
+    rpc: () => assert.fail("A suspended account must not reach storage"),
+  } });
+  assert.equal((await fetch(`/arcade/progress`, { headers: { Authorization: `Bearer ${token}` } })).status, 403);
+});
+
+Deno.test("Only admins create and suspend accounts, and the database check runs before Auth changes", async () => {
+  let admin = false;
+  const steps = [];
+  const authAdmin = {
+    createUser: async (input) => { steps.push(["create", input]); return { data: { user: { id: run } }, error: null }; },
+    updateUserById: async (id, input) => { steps.push(["ban", id, input]); return { error: null }; },
+  };
+  const fetch = requestFor({ supabase: {
+    auth: { getUser: async () => authUser(), admin: authAdmin },
+    rpc: async (name, args) => {
+      steps.push([name, args]);
+      if (name === "pandiwasto_roles") return { data: { admin, teacher: false } };
+      if (name === "pandiwasto_admin_suspension" && !admin) return { error: { code: "PT403" } };
+      return { data: name === "pandiwasto_admin_set_role" ? { role: args.new_role } : null };
+    },
+  } });
+  const account = { email: "teacher@example.test", password: "temporary-pass", firstName: "Ana", lastName: "Cruz", displayName: "Ana", role: "teacher" };
+  assert.equal((await fetch(`/arcade/admin/accounts/create`, post(account))).status, 403);
+  assert.equal((await fetch(`/arcade/admin/accounts/suspend`, post({ accountId: run, suspended: true }))).status, 403);
+  assert.ok(!steps.some(([step]) => step === "create" || step === "ban"));
+
+  admin = true;
+  steps.length = 0;
+  assert.equal((await fetch(`/arcade/admin/accounts/create`, post({ ...account, password: "short" }))).status, 400);
+  const created = await fetch(`/arcade/admin/accounts/create`, post(account));
+  assert.equal(created.status, 200);
+  assert.deepEqual(await created.json(), { accountId: run });
+  const create = steps.find(([step]) => step === "create")[1];
+  assert.equal(create.email_confirm, true);
+  assert.deepEqual(create.user_metadata, { first_name: "Ana", last_name: "Cruz", display_name: "Ana", profile_visibility: "private" });
+  assert.deepEqual(steps.at(-1), ["pandiwasto_admin_set_role", { target_account_id: run, new_role: "teacher", created: true, account_id: player }]);
+
+  steps.length = 0;
+  assert.equal((await fetch(`/arcade/admin/accounts/suspend`, post({ accountId: run, suspended: true }))).status, 200);
+  assert.deepEqual(steps.map(([step]) => step), ["pandiwasto_admin_suspension", "ban"]);
+  assert.deepEqual(steps[1], ["ban", run, { ban_duration: "876000h" }]);
 });
 
 Deno.test("Admin status uses the database role check and mastery uses the authenticated account", async () => {
@@ -202,14 +291,14 @@ Deno.test("Admin status uses the database role check and mastery uses the authen
       assert.deepEqual(args, { account_id: player });
       return name === "pandiwasto_arcade_admin_status"
         ? { error: { code: "PT403" } }
-        : { data: { skills: [{ skillId: "salitang-ugat", mastery: 0.34, attempts: 2 }] } };
+        : { data: { skills: [{ skillId: "salitang-ugat", mastery: 0.34, attempts: 2, mastered: false }] } };
     },
   } });
   const headers = { Authorization: `Bearer ${token}` };
   assert.equal((await fetch(`/arcade/admin/status`, { headers })).status, 403);
   const response = await fetch(`/arcade/mastery`, { headers });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { skills: [{ skillId: "salitang-ugat", mastery: 0.34, attempts: 2 }] });
+  assert.deepEqual(await response.json(), { skills: [{ skillId: "salitang-ugat", mastery: 0.34, attempts: 2, mastered: false }] });
 });
 
 Deno.test("Score moderation has a strict input, an authenticated actor, and a safe response", async () => {

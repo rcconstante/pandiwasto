@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowRight, ChevronDown, Lock, LogOut, Play, Settings, ShieldCheck, Star, Trophy, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Lock, LogOut, Play, Settings, Star, Trophy, UserRound } from "lucide-react";
 import { Dialog, DropdownMenu, Tabs } from "radix-ui";
 import { authClient } from "@/lib/auth";
-import { ArcadeRequestError, getStudyState, loadAccountProgress, loadAdminStatus, loadMastery } from "@/lib/arcadeApi";
+import { ArcadeRequestError, getStudyState, loadAccountProgress, loadMastery } from "@/lib/arcadeApi";
 import { BalloonGame } from "@/components/games/BalloonGame";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { XP_PER_LEVEL, type ArcadeProgress } from "@/data/arcadeProgress";
 import { BALLOON_GAME_ID } from "@/data/balloonGame";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
@@ -12,7 +13,6 @@ import { MINIGAMES, type MinigameItem } from "@/data/landingData";
 import { avatarSrc, type ProfileDetails, readProfile } from "@/data/dashboardProfile";
 import { readPlayerPhoto } from "@/lib/playerPhoto";
 import { DashboardProfile } from "./DashboardProfile";
-import { DashboardAdmin } from "./DashboardAdmin";
 import { DashboardStudy, type StudyStage } from "./DashboardStudy";
 import { DashboardRankings } from "./DashboardRankings";
 import { DashboardSettings } from "./DashboardSettings";
@@ -51,13 +51,12 @@ export function Dashboard({ user, onHome }: {
   const [accountError, setAccountError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [mastery, setMastery] = useState<Awaited<ReturnType<typeof loadMastery>>["skills"]>([]);
-  const [admin, setAdmin] = useState<Awaited<ReturnType<typeof loadAdminStatus>> | null>(null);
   const [studyState, setStudyState] = useState<StudyStage>("unavailable");
   const [profile, setProfile] = useState<ProfileDetails>(() => readProfile(user));
   const [photo, setPhoto] = useState<{ path: string; url: string }>();
   const [exitError, setExitError] = useState("");
   const [leaving, setLeaving] = useState(false);
-  const title = useRef<HTMLHeadingElement>(null);
+  const gameWasOpen = useRef(false);
   const gamesTab = useRef<HTMLButtonElement>(null);
   const rankingsTab = useRef<HTMLButtonElement>(null);
   const profileTab = useRef<HTMLButtonElement>(null);
@@ -68,7 +67,6 @@ export function Dashboard({ user, onHome }: {
   const currentGame = MINIGAMES[gameIndex];
   const canStartGames = accountProgress !== null && !accountError;
   const gameStatus = accountError ? "Games unavailable" : canStartGames ? "Ready to play" : "Loading account progress…";
-  const tabs = admin ? [...TABS, { id: "admin", label: "Admin" }] : TABS;
   const studyPractice = studyState === "practice";
   const developerMode = accountProgress?.developer?.enabled === true;
   const allGamesUnlocked = studyPractice || developerMode;
@@ -81,7 +79,8 @@ export function Dashboard({ user, onHome }: {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-    if (!gameOpen) title.current?.focus({ preventScroll: true });
+    if (gameWasOpen.current && !gameOpen) currentCard.current?.focus({ preventScroll: true });
+    gameWasOpen.current = gameOpen;
   }, [gameOpen]);
 
   useEffect(() => {
@@ -131,16 +130,6 @@ export function Dashboard({ user, onHome }: {
     return () => abort.abort();
   }, [refresh, tab]);
 
-  useEffect(() => {
-    const abort = new AbortController();
-    void loadAdminStatus(abort.signal).then((status) => {
-      if (!abort.signal.aborted) setAdmin(status);
-    }).catch(() => {
-      if (!abort.signal.aborted) setAdmin(null);
-    });
-    return () => abort.abort();
-  }, [refresh]);
-
   function chooseGame(index: number, direction = Math.sign(index - gameIndex)) {
     setGameDirection(direction);
     setGameIndex((index + MINIGAMES.length) % MINIGAMES.length);
@@ -185,7 +174,14 @@ export function Dashboard({ user, onHome }: {
       return <BalloonGame testPlay={developerMode} personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />;
     }
     return (
-      <Suspense fallback={<main className="pw-dashboard"><p className="pwd-content" role="status">Opening the game…</p></main>}>
+      <Suspense fallback={
+        <main className="pw-dashboard pwd-game-loading">
+          <div className="pwd-game-loading-status" role="status">
+            <p>Loading game…</p>
+            <span className="pwd-game-spinner" aria-hidden="true" />
+          </div>
+        </main>
+      }>
         <RankedGame testPlay={developerMode} gameId={currentGame.id} personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />
       </Suspense>
     );
@@ -195,9 +191,8 @@ export function Dashboard({ user, onHome }: {
     <main className="pw-dashboard">
       <header className="pwd-header">
         <div className="pwd-header-inner">
-          <button type="button" className="pwd-brand" aria-label="PandiWasto home" onClick={onHome}>
-            <img src={`${base}pandiwasto-mascot.webp`} alt="" width="48" height="48" />
-            <span>PandiWasto</span>
+          <button type="button" className="pw-brand" aria-label="PandiWasto home" onClick={onHome}>
+            <BrandLogo />
           </button>
           <div className="pwd-header-actions">
             {accountProgress && <span className="pwd-level"><Star size={17} aria-hidden="true" /> Level {level} <span>· {accountProgress.xp} XP</span></span>}
@@ -232,15 +227,14 @@ export function Dashboard({ user, onHome }: {
       </header>
 
       <div className="pwd-content">
-        <h1 ref={title} tabIndex={-1}>{profile.displayName || profile.firstName ? `Kumusta, ${firstName}!` : "Tara, laro tayo!"}</h1>
+        <h1>{profile.displayName || profile.firstName ? `Kumusta, ${firstName}!` : "Tara, laro tayo!"}</h1>
         {exitError && <p role="alert">{exitError}</p>}
         {accountError && <p role="alert">{accountError} <button type="button" className="pwd-text-action" onClick={() => setRefresh((count) => count + 1)}>Retry</button></p>}
         <Tabs.Root value={tab} onValueChange={setTab}>
           <Tabs.List className="pwd-tabs" aria-label="Dashboard pages">
-            {tabs.map(({ id, label }) => (
+            {TABS.map(({ id, label }) => (
               <Tabs.Trigger key={id} value={id} className="pwd-tab" ref={id === "games" ? gamesTab : id === "rankings" ? rankingsTab : id === "profile" ? profileTab : id === "settings" ? settingsTab : undefined}>
-                {id === "admin" ? <ShieldCheck className="pwd-tab-profile" aria-hidden="true" />
-                  : <img src={`${base}dashboard/${id}.webp`} alt="" width="44" height="44" />}
+                <img src={`${base}dashboard/${id}.webp`} alt="" width="44" height="44" />
                 {label}
               </Tabs.Trigger>
             ))}
@@ -340,7 +334,7 @@ export function Dashboard({ user, onHome }: {
                     <p className="pwd-example">{lesson.example}</p>
                   </div>
                   {mastery.filter((skill) => skill.skillId === lesson.id && skill.attempts > 0).map((skill) => (
-                    <p key={skill.skillId} className="pwd-ranking-scope">Estimated mastery {Math.round(skill.mastery * 100)}% · {skill.attempts} {skill.attempts === 1 ? "answer" : "answers"}</p>
+                    <p key={skill.skillId} className="pwd-ranking-scope">Estimated mastery {Math.round(skill.mastery * 100)}% · {skill.attempts} {skill.attempts === 1 ? "answer" : "answers"}{skill.mastered && " · Mastered"}</p>
                   ))}
                   <button type="button" className="pwd-text-action" onClick={() => showRelatedGame(lesson.gameId)}>View related game <ArrowRight size={16} aria-hidden="true" /></button>
                 </details>
@@ -378,11 +372,6 @@ export function Dashboard({ user, onHome }: {
               requestAnimationFrame(() => gamesTab.current?.focus());
             }} />
           </Tabs.Content>
-          {admin && (
-            <Tabs.Content value="admin" className="pwd-panel">
-              <DashboardAdmin summary={admin} />
-            </Tabs.Content>
-          )}
         </Tabs.Root>
       </div>
     </main>

@@ -1,15 +1,13 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowRight01Icon, Cancel01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
 import heroDashboard from "@/assets/images/dashboard-screenshot.webp";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 import {
-  ArcadeGamesIcon,
   BktDiagnosisIcon,
   LlmHintsIcon,
   MasteryTargetIcon,
-  MorpolohiyaIcon,
-  XpTrophyIcon,
 } from "@/components/ui/FeatureIcons";
 
 const LINKS = [
@@ -25,9 +23,8 @@ export function Navigation({ onOpenAuth, returning }: { onOpenAuth: () => void; 
   return (
     <header className="pw-header">
       <nav aria-label="Main navigation" className="pw-nav">
-        <a href="#home" className="pw-brand">
-          <img src={`${import.meta.env.BASE_URL}pandiwasto-mascot.webp`} alt="" width="50" height="50" />
-          <span>Pandi<span>Wasto</span><small>Filipino Learning</small></span>
+        <a href="#home" className="pw-brand" aria-label="PandiWasto home">
+          <BrandLogo tagline />
         </a>
         <div id="landing-nav-links" className="pw-nav-links" data-open={menuOpen}>
           {LINKS.map(({ href, label }) => (
@@ -54,25 +51,25 @@ export function Navigation({ onOpenAuth, returning }: { onOpenAuth: () => void; 
 }
 
 const LEFT_FEATURES = [
-  { Icon: BktDiagnosisIcon, label: "BKT Skill Diagnosis" },
-  { Icon: LlmHintsIcon, label: "Targeted LLM Hints" },
-  { Icon: ArcadeGamesIcon, label: "7 Arcade Minigames" },
+  { icon: <BktDiagnosisIcon aria-hidden="true" className="size-8" />, label: "BKT Skill Diagnosis" },
+  { icon: <LlmHintsIcon aria-hidden="true" className="size-8" />, label: "Targeted LLM Hints" },
+  { icon: <img src={`${import.meta.env.BASE_URL}dashboard/games.webp`} width="32" height="32" alt="" />, label: "7 Arcade Minigames" },
 ];
 
 const RIGHT_FEATURES = [
-  { Icon: MorpolohiyaIcon, label: "Filipino Morpolohiya" },
-  { Icon: MasteryTargetIcon, label: "Mastery Thresholds" },
-  { Icon: XpTrophyIcon, label: "XP & Level Unlocks" },
+  { icon: <img src={`${import.meta.env.BASE_URL}dashboard/lessons.webp`} width="32" height="32" alt="" />, label: "Filipino Morpolohiya" },
+  { icon: <MasteryTargetIcon aria-hidden="true" className="size-8" />, label: "Mastery Thresholds" },
+  { icon: <img src={`${import.meta.env.BASE_URL}dashboard/rankings.webp`} width="32" height="32" alt="" />, label: "XP & Level Unlocks" },
 ];
 
 const TOPICS = ["Salitang-Ugat", "Kayarian ng Salita", "Mga Panlapi", "BKT + Filipino Hints"];
 
-function FeatureRail({ features, side }: { features: typeof LEFT_FEATURES; side: "left" | "right" }) {
+function FeatureRail({ features, side }: { features: { icon: ReactNode; label: string }[]; side: "left" | "right" }) {
   return (
     <ul className={`pw-feature-rail pw-feature-rail-${side}`} aria-label={side === "left" ? "Learning tools" : "Learning progress"}>
-      {features.map(({ Icon, label }) => (
+      {features.map(({ icon, label }) => (
         <li key={label} className="pw-feature">
-          <Icon aria-hidden="true" className="size-8 shrink-0" />
+          <span className="pw-feature-icon">{icon}</span>
           <span>{label}</span>
         </li>
       ))}

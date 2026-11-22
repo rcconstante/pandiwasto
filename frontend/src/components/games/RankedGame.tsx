@@ -1,10 +1,12 @@
 import { useEffect, useEffectEvent, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { DragDropProvider, PointerSensor, useDraggable, useDroppable } from "@dnd-kit/react";
-import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, GripVertical, Lightbulb, Moon, Printer, RotateCcw, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, GripVertical, Hammer, Lightbulb, Moon, Printer, RotateCcw, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { MINIGAMES } from "@/data/landingData";
 import { ArcadeRequestError, moveRankedGame, refreshRankedGame, startRankedGame, type RankedMove, type RankedSnapshot } from "@/lib/arcadeApi";
 import { ArcadeCue, ArcadeHearts, ArcadeScore } from "./ArcadeFeedback";
+import { RoundFeedbackDialog } from "./RoundFeedbackDialog";
+import { waitForGameMotion } from "./gameMotion";
 import { useArcadeSound } from "./useArcadeSound";
 import "./whack-game.css";
 import "./toss-game.css";
@@ -26,6 +28,8 @@ const THEMES: Record<number, { theme: string; asset: string; prompt: string }> =
 const DOLLS: Record<string, string> = { tagaganap: "cat", layon: "turtle", ganapan: "rabbit", tagatanggap: "chick" };
 const SLOT = "ranked-toss-slot";
 const SENSORS = [PointerSensor];
+const MOTION_MS: Record<number, number> = { 2: 580, 3: 360, 4: 620, 5: 650, 6: 1100, 7: 680 };
+type Reaction = { tone: "win" | "miss"; choice?: string; hole?: number; answer?: string };
 
 interface PendingMove {
   id: string;
@@ -53,24 +57,18 @@ function Sentence({ sentence, slot }: { sentence: string; slot: ReactNode }) {
   return <>{parts[0]}{parts.length > 1 && <>{slot}{parts.slice(1).join(" ")}</>}</>;
 }
 
-function ClawCabinet({ options, selected, rejected, locked, pick, grab, catching }: {
-  options: Choice[]; selected: string; rejected: string[]; locked: boolean; pick: Picker; grab: () => void; catching: boolean;
+function ClawCabinet({ options, selected, rejected, locked, pick, grab, reaction }: {
+  options: Choice[]; selected: string; rejected: string[]; locked: boolean; pick: Picker; grab: () => void; reaction?: Reaction["tone"];
 }) {
   const index = options.findIndex((option) => option.id === selected);
   function step(direction: number) {
-    for (let distance = 1; distance <= options.length; distance++) {
-      const next = options[(Math.max(0, index) + options.length + direction * distance) % options.length];
-      if (!rejected.includes(next.id)) {
-        pick(next.id);
-        return;
-      }
-    }
+    if (options.length) pick(options[(Math.max(0, index) + options.length + direction) % options.length].id);
   }
-  return <div className="claw-cabinet" data-motion={catching ? "catch" : undefined}>
+  return <div className="claw-cabinet" data-motion={reaction}>
     <div className="claw-window">
       <div className="claw-crane" style={{ "--claw-lane": Math.max(0, index) } as CSSProperties} aria-hidden="true"><span className="claw-hook" /></div>
       <div className="claw-prizes" role="group" aria-label="Prize dolls">
-        {options.map((option) => <button key={option.id} type="button" className="claw-prize" disabled={locked || rejected.includes(option.id)}
+        {options.map((option) => <button key={option.id} type="button" className="claw-prize" disabled={locked}
           aria-pressed={selected === option.id} data-missed={rejected.includes(option.id)} onClick={() => pick(option.id)}>
           {DOLLS[option.id] && <img src={BASE + "claw-" + DOLLS[option.id] + ".webp"} alt="" width="100" height="100" />}
           <span>{option.label}</span>
@@ -79,7 +77,7 @@ function ClawCabinet({ options, selected, rejected, locked, pick, grab, catching
     </div>
     <div className="claw-controls">
       <button type="button" className="pop-button pop-quiet claw-arrow" aria-label="Move claw left" disabled={locked} onClick={() => step(-1)}><ChevronLeft aria-hidden="true" /></button>
-      <button type="button" className="pop-button pop-primary claw-grab" disabled={locked || index < 0 || rejected.includes(selected)} onClick={grab}>Grab!</button>
+      <button type="button" className="pop-button pop-primary claw-grab" disabled={locked || index < 0} onClick={grab}>Grab!</button>
       <button type="button" className="pop-button pop-quiet claw-arrow" aria-label="Move claw right" disabled={locked} onClick={() => step(1)}><ChevronRight aria-hidden="true" /></button>
     </div>
   </div>;
@@ -97,6 +95,7 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
   const [retry, setRetry] = useState<PendingMove | null>(null);
   const [quit, setQuit] = useState(false);
   const [review, setReview] = useState(false);
+  const [motion, setMotion] = useState<Reaction | null>(null);
   const [time, setTime] = useState(() => Date.now());
   const [offset, setOffset] = useState(0);
   const inflight = useRef(false);
@@ -112,12 +111,13 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
   const inReview = playing && run.phase === "review";
   const options = run?.options ?? [];
   const rejected = run?.rejected ?? [];
-  const locked = !playing || Boolean(inReview) || busy || Boolean(retry) || needsRefresh;
+  const locked = !playing || Boolean(inReview) || review || busy || Boolean(retry) || needsRefresh;
   const deadline = playing && !inReview ? run.deadline : null;
   const remaining = deadline ? Math.max(0, deadline - time - offset) : null;
   const faceDown = Boolean(run?.hideAt && time + offset >= run.hideAt);
   const sprite = BASE + config.asset + ".webp";
   const hintVisible = gameId !== 2 && run?.hintAllowed !== false && !inReview;
+  const hintLevel = run?.hintLevel ?? 0;
   const selectedOption = options.find((choice) => choice.id === selected);
   const win = run?.feedback?.kind === "correct" || run?.feedback?.kind === "match" || run?.feedback?.kind === "board-complete";
   const afterMiss = run?.feedback?.kind === "wrong" || run?.feedback?.kind === "mismatch";
@@ -136,17 +136,16 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
 
   const moveOnClock = useEffectEvent((action: RankedMove) => submit(action));
   useEffect(() => {
-    if (gameId !== 2 || !playing || busy || retry || quit || error) return;
-    const action = deadline ? { type: "timeout" } as const : inReview && win ? { type: "next" } as const : null;
-    if (!action) return;
-    const delay = deadline ? Math.max(0, deadline - Date.now() - offset) + 120 : 800;
-    const timer = window.setTimeout(() => moveOnClock(action), delay);
+    if (gameId !== 2 || !deadline || !playing || review || busy || retry || quit || error) return;
+    const delay = Math.max(0, deadline - Date.now() - offset) + 120;
+    const timer = window.setTimeout(() => moveOnClock({ type: "timeout" }), delay);
     return () => window.clearTimeout(timer);
-  }, [deadline, inReview, win, offset, playing, gameId, busy, retry, quit, error]);
+  }, [deadline, offset, playing, gameId, review, busy, retry, quit, error]);
 
   useEffect(() => {
-    if (gameId === 2 || !playing || locked || quit || error || !afterMiss || !run.studyActive || !run.hintAllowed || run.hint) return;
-    const key = run.runId + ":" + run.version;
+    if (gameId === 2 || !playing || locked || quit || error || !afterMiss || !run.studyActive || !run.hintAllowed || hintLevel >= 3) return;
+    // One automatic hint per miss: hearts drop once for each wrong answer.
+    const key = run.runId + ":" + run.round + ":" + run.hearts;
     if (automaticHint.current === key) return;
     const delay = run.hideAt ? Math.max(0, run.hideAt - Date.now() - offset) + 120 : 0;
     const timer = window.setTimeout(() => {
@@ -154,14 +153,13 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
       moveOnClock({ type: "hint" });
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [gameId, playing, locked, quit, error, afterMiss, run, offset]);
+  }, [gameId, playing, locked, quit, error, afterMiss, run, offset, hintLevel]);
 
-  function receive(snapshot: RankedSnapshot, observedAt: number) {
+  function receive(snapshot: RankedSnapshot, observedAt: number, showFeedback: boolean) {
     if (snapshot.serverNow !== undefined) setOffset(snapshot.serverNow - observedAt);
     setTime(observedAt);
     setRun(snapshot);
-    const autoAdvance = snapshot.gameId === 2 && snapshot.feedback?.kind === "correct";
-    setReview(snapshot.phase === "review" && snapshot.status === "active" && !autoAdvance);
+    setReview(showFeedback && snapshot.feedback !== null && snapshot.feedback?.kind !== "match");
     if (snapshot.round !== round || snapshot.status !== "active") setSelected("");
     switch (snapshot.feedback?.kind) {
       case "correct": case "match": case "board-complete": play("correct"); break;
@@ -174,7 +172,7 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
     }
   }
 
-  async function perform(work: () => Promise<RankedSnapshot>, failed: (error: unknown) => void) {
+  async function perform(work: () => Promise<RankedSnapshot>, failed: (error: unknown) => void, action?: RankedMove) {
     if (inflight.current) return;
     inflight.current = true;
     setBusy(true);
@@ -182,7 +180,22 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
     setNeedsRefresh(false);
     try {
       const snapshot = await work();
-      receive(snapshot, Date.now());
+      const observedAt = Date.now();
+      const played = action?.type === "answer" || action?.type === "timeout" || action?.type === "flip";
+      if (played && snapshot.feedback) {
+        const missed = ["wrong", "mismatch", "timeout"].includes(snapshot.feedback.kind);
+        const activeHole = snapshot.round % 3;
+        setMotion({ tone: missed ? "miss" : "win", answer: snapshot.feedback.answer,
+          choice: action.type === "answer" ? action.choice : undefined,
+          hole: missed ? (activeHole + 1 + Math.floor(Math.random() * 2)) % 3 : activeHole });
+        if (gameId === 4) {
+          setTime(observedAt);
+          setRun(snapshot);
+        }
+        await waitForGameMotion(MOTION_MS[gameId]);
+        setMotion(null);
+      }
+      receive(snapshot, observedAt, played || (!action && snapshot.phase === "review" && snapshot.status === "active"));
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "The connection paused. Try again.");
       setNeedsRefresh(problem instanceof ArcadeRequestError && problem.status === 409);
@@ -220,11 +233,11 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
       // Retry a lost response with the same request ID and move.
       const recoverable = problem instanceof ArcadeRequestError ? problem.status >= 500 || problem.status === 429 : true;
       setRetry(recoverable ? pending : null);
-    });
+    }, pending.action);
   }
 
   function pick(choice: string) {
-    if (locked || rejected.includes(choice)) return;
+    if (locked) return;
     setSelected(choice);
     play();
   }
@@ -244,8 +257,18 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
 
   const blankSlot = <strong className="ticket-blank" aria-label="Patlang">___</strong>;
   const nextMove = () => submit({ type: "next" });
-  const lastRound = Boolean(run?.totalRounds && run.round === run.totalRounds - 1);
-  const nextLabel = lastRound || (gameId === 2 && run?.hearts === 0) ? "See results" : "Next " + (gameId === 4 ? "board" : gameId === 2 ? "word" : "round");
+  const remainingHearts = run?.hearts ?? 3;
+  const noHearts = remainingHearts === 0;
+  const retryWord = !win && !noHearts && (gameId === 2 || run?.phase === "playing");
+  const nextLabel = run?.status === "completed" ? "See results" : retryWord ? "Try again" : gameId === 4 ? "Next board" : "Next word";
+  const hintButton = hintVisible && <button type="button" className="pop-button pop-quiet" disabled={locked || hintLevel >= 3} onClick={() => submit({ type: "hint" })}><Lightbulb size={17} aria-hidden="true" /> {hintLevel ? "Next hint" : "Hint"}</button>;
+
+  function continueReview() {
+    if (needsRefresh) refreshRun();
+    else if (retry) submit();
+    else if (run?.status !== "active" || !inReview) setReview(false);
+    else nextMove();
+  }
 
   return (
     <main className={"pop-game ranked-game " + config.theme + "-game"} onKeyDown={handleKeyboard}>
@@ -264,6 +287,7 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
             <p className="pop-skill" lang="fil">{game.lesson}</p>
             <h1 ref={focus} tabIndex={-1}>{game.gameName}</h1>
             <p>{game.description}</p>
+            <small>Three hearts per {gameId === 4 ? "board" : "word"}. After three misses, review and move on.</small>
             <div className="ranked-actions">
               <button type="button" className="pop-button pop-primary" disabled={busy} onClick={start}>Start game <ArrowRight size={18} aria-hidden="true" /></button>
               {gameId === 2 && <label className="whack-practice"><input type="checkbox" checked={practice} onChange={(event) => setPractice(event.target.checked)} /> Untimed practice</label>}
@@ -272,12 +296,14 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
           <img src={sprite} alt="" width="440" height="440" />
         </section>}
 
-        {playing && <div className="ranked-play">
+        {run && (playing || review || motion) && <div className="ranked-play" data-reaction={motion?.tone} style={{ "--arcade-motion-ms": MOTION_MS[gameId] + "ms" } as CSSProperties}>
           <div className="pop-round-top">
-            <span className="pop-progress">{gameId === 4 ? "Board" : gameId === 2 ? "Word" : "Round"} {run.round + 1}{run.totalRounds && "/" + run.totalRounds}</span>
-            {gameId === 2 && <ArcadeHearts lives={run.hearts ?? 0} total={3} />}
-            {remaining !== null && <span className="pop-progress" aria-label="Time remaining">{(remaining / 1000).toFixed(1)} s</span>}
-            <ArcadeScore points={run.score} />
+            <span className="pop-progress">{gameId === 4 ? "Board" : "Word"} {run.round + 1}{run.totalRounds && "/" + run.totalRounds}</span>
+            <ArcadeHearts lives={remainingHearts} total={3} />
+            <span className="ranked-meters">
+              {remaining !== null && <span className="pop-progress" aria-label="Time remaining">{(remaining / 1000).toFixed(1)} s</span>}
+              <ArcadeScore points={run.score} />
+            </span>
           </div>
 
           {gameId === 2 && <>
@@ -286,7 +312,8 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
               <p className="whack-word" lang="fil">{run.word}</p>
               <div className="whack-holes" aria-hidden="true">
                 {[0, 1, 2].map((slot) => <div className="whack-hole" key={slot}><div className="whack-hole-rim" />
-                  {slot === run.round % 3 && remaining !== 0 && <img className="whack-mole" data-state={win && inReview ? "correct" : "up"} src={sprite} alt="" width="540" height="540" />}
+                  {slot === run.round % 3 && (remaining !== 0 || motion) && <img className="whack-mole" data-state={motion?.tone === "win" ? "correct" : motion?.tone === "miss" ? "down" : "up"} src={sprite} alt="" width="540" height="540" />}
+                  {motion?.hole === slot && <span className="whack-hammer" data-impact={motion.tone}><Hammer aria-hidden="true" /><Sparkles aria-hidden="true" /></span>}
                 </div>)}
               </div>
             </section>
@@ -313,12 +340,13 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
             <div className="toss-tile-tray">
               <p>Tap a tile or drag it into the sentence.</p>
               <div className="toss-tiles" role="group" aria-label="Affix tiles">
-                {options.map((choice) => <Tile key={choice.id} option={choice} selected={selected === choice.id} locked={locked || rejected.includes(choice.id)} pick={pick} />)}
+                {options.map((choice) => <Tile key={choice.id} option={choice} selected={selected === choice.id} locked={locked} pick={pick} />)}
               </div>
             </div>
-            <div className="ranked-actions">
-              <button type="button" className="pop-button pop-primary" disabled={locked || !selected || rejected.includes(selected)} onClick={() => answer(selected)}>Check word <Check size={17} aria-hidden="true" /></button>
+            <div className="ranked-actions ranked-toss-actions">
+              <button type="button" className="pop-button pop-primary" disabled={locked || !selected} onClick={() => answer(selected)}>Check word <Check size={17} aria-hidden="true" /></button>
               <button type="button" className="pop-button pop-quiet" disabled={locked || !selected} onClick={() => setSelected("")}>Clear tile</button>
+              {hintButton}
             </div>
           </DragDropProvider>}
 
@@ -341,8 +369,8 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
             </div>
           </section>}
 
-          {gameId === 5 && <section className="ticket-stage" data-printing={inReview}>
-            <div className="ticket-machine"><img src={sprite} alt="" width="382" height="382" />{win && run.feedback?.answer && <span className="ticket-strip ranked-ticket" aria-hidden="true"><span className="ticket-piece">{run.feedback.answer}</span></span>}</div>
+          {gameId === 5 && <section className="ticket-stage" data-printing={Boolean(motion)}>
+            <div className="ticket-machine"><img src={sprite} alt="" width="382" height="382" />{motion?.tone === "win" && <span className="ticket-strip ranked-ticket" aria-hidden="true"><span className="ticket-piece">{motion.answer}</span></span>}</div>
             <div className="ticket-controls">
               <div className="ticket-prompt"><h1 ref={focus} tabIndex={-1}>{config.prompt}</h1>
                 <p className="ticket-sentence" lang="fil"><Sentence sentence={run.sentence ?? ""} slot={blankSlot} /></p>
@@ -350,7 +378,7 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
               </div>
               <div className="ticket-levers" role="group" aria-label="Print levers">
                 {options.map((choice) => <button type="button" key={choice.id} className="ticket-lever" data-kind={choice.id}
-                  disabled={locked || rejected.includes(choice.id)} data-state={rejected.includes(choice.id) ? "miss" : undefined} onClick={() => answer(choice.id)}>
+                  disabled={locked} data-state={rejected.includes(choice.id) ? "miss" : undefined} data-pulling={motion?.choice === choice.id || undefined} onClick={() => answer(choice.id)}>
                   <span className="ticket-handle" aria-hidden="true"><i /></span><span><strong lang="fil">{choice.label}</strong><small>{choice.id === "ganap" ? "Repeat the whole word" : "Repeat part of the word"}</small></span>
                 </button>)}
               </div>
@@ -361,35 +389,33 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
             <div className="claw-prompt"><h1 ref={focus} tabIndex={-1}>{config.prompt}</h1>
               <p className="claw-sentence" lang="fil">{run.verb && <strong>{run.verb}</strong>} {run.verb && run.sentence?.startsWith(run.verb) ? run.sentence.slice(run.verb.length).trimStart() : run.sentence}</p>
             </div>
-            <ClawCabinet options={options} selected={selected} rejected={rejected} locked={locked} pick={pick} grab={() => answer(selected)} catching={Boolean(inReview && win)} />
+            <ClawCabinet options={options} selected={selected} rejected={rejected} locked={locked} pick={pick} grab={() => answer(selected)} reaction={motion?.tone} />
           </section>}
 
-          {gameId === 7 && <section className="fortune-stage" data-printing={inReview}>
-            <div className="fortune-machine"><img src={sprite} alt="" width="380" height="380" />{win && run.feedback?.answer && <span className="fortune-card" aria-hidden="true"><Moon size={14} /> {run.feedback.answer}</span>}</div>
+          {gameId === 7 && <section className="fortune-stage" data-printing={Boolean(motion)}>
+            <div className="fortune-machine"><img src={sprite} alt="" width="380" height="380" />{motion?.tone === "win" && <span className="fortune-card" aria-hidden="true"><Moon size={14} /> {motion.answer}</span>}</div>
             <div className="fortune-board"><h1 ref={focus} tabIndex={-1}>{config.prompt}</h1>
               <div className="fortune-pair" lang="fil"><strong>pang-</strong><span>+</span><strong>{run.root}</strong></div>
               <div className="fortune-choices" role="group" aria-label="Predict the word">
                 {options.map((choice) => <button type="button" className="fortune-choice" key={choice.id} lang="fil" aria-pressed={selected === choice.id} data-rejected={rejected.includes(choice.id)}
-                  disabled={locked || rejected.includes(choice.id)} onClick={() => pick(choice.id)}>{choice.label}</button>)}
+                  disabled={locked} onClick={() => pick(choice.id)}>{choice.label}</button>)}
               </div>
-              <button type="button" className="pop-button pop-primary" disabled={locked || !selected || rejected.includes(selected)} onClick={() => answer(selected)}><Printer size={17} aria-hidden="true" /> Print card</button>
+              <button type="button" className="pop-button pop-primary" disabled={locked || !selected} onClick={() => answer(selected)}><Printer size={17} aria-hidden="true" /> Print card</button>
             </div>
           </section>}
 
           <div className="ranked-actions">
-            {hintVisible && <button type="button" className="pop-button pop-quiet" disabled={locked || Boolean(run.hint)} onClick={() => submit({ type: "hint" })}><Lightbulb size={17} aria-hidden="true" /> Hint</button>}
+            {gameId !== 3 && hintButton}
             {gameId === 2 && (run.hits ?? 0) > 0 && !inReview && <button type="button" className="pop-button pop-quiet" disabled={busy || Boolean(retry)} onClick={() => submit({ type: "finish" })}>Finish run</button>}
             {inReview && !review && <button type="button" className="pop-button pop-primary" disabled={busy || Boolean(retry)} onClick={nextMove}>{nextLabel} <ArrowRight size={18} aria-hidden="true" /></button>}
           </div>
-          {run.feedback && <p className="pop-feedback" role="status" key={run.version}><ArcadeCue tone={win ? "correct" : "retry"}>{run.feedback.text}</ArcadeCue></p>}
+          {run.feedback && !motion && !review && <p className="pop-feedback" role="status" key={run.version}><ArcadeCue tone={win ? "correct" : "retry"}>{run.feedback.text}</ArcadeCue></p>}
           {run.hint && <p className="ranked-hint" role="status" lang="fil">{run.hint}</p>}
         </div>}
 
-        {run?.status === "completed" && <section className="pop-results">
+        {run?.status === "completed" && !review && !motion && <section className="pop-results">
           <img src={sprite} alt="" width="100" height="100" />
-          <h1 ref={focus} tabIndex={-1}>{run.hearts === 0 ? "Out of hearts" : "Ang galing!"}</h1>
-          <p>{run.mode === "practice" ? "Practice complete. Your XP was saved." : "Your account progress is saved."}</p>
-          {run.hearts === 0 && run.feedback && <p lang="fil">{run.feedback.text}</p>}
+          <h1 ref={focus} tabIndex={-1}>{run.score > 0 ? "Ang galing!" : "Game complete"}</h1>
           <div className="pop-result-stats">
             <div><span>Score</span><strong>{run.score.toLocaleString()}</strong></div>
             <div><span>{testPlay ? "Test XP" : "XP earned"}</span><strong>+{run.xp.toLocaleString()}</strong></div>
@@ -405,26 +431,19 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
         </section>}
 
         {!review && !quit && <>
-          {busy && <p className="pop-feedback" role="status">Saving to your account…</p>}
           {error && <p className="pop-feedback" role="alert" data-result="retry">{error}</p>}
           {retry && <button className="pop-button pop-primary" type="button" disabled={busy} onClick={() => submit()}>Retry save</button>}
           {needsRefresh && run && <button className="pop-button pop-primary" type="button" disabled={busy} onClick={refreshRun}>Refresh run</button>}
         </>}
 
-        <Dialog.Root open={Boolean(inReview && review)} onOpenChange={setReview}>
-          <Dialog.Portal><Dialog.Overlay className="pw-modal-overlay pop-celebration-overlay" />
-            <Dialog.Content className="pw-modal pop-celebration">
-              <img src={sprite} alt="" width="84" height="84" />
-              <Dialog.Title>{win ? (gameId === 4 ? "Board complete!" : "Magaling!") : "Ready to try again?"}</Dialog.Title>
-              <Dialog.Description>{run?.feedback?.text ?? "Continue when you’re ready."}</Dialog.Description>
-              {run?.feedback?.answer && <strong lang="fil">{run.feedback.answer}</strong>}
-              {Boolean(run?.feedback?.points) && <span className="pop-celebration-score">+{run?.feedback?.points} points</span>}
-              {error && <p role="alert">{error}</p>}
-              <button type="button" className="pop-button pop-primary" disabled={busy} onClick={needsRefresh ? refreshRun : retry ? () => submit() : nextMove}>{needsRefresh ? "Refresh run" : retry ? "Retry save" : nextLabel} <ArrowRight size={17} aria-hidden="true" /></button>
-              {gameId === 2 && (run?.hits ?? 0) > 0 && (run?.hearts ?? 0) > 0 && !retry && <button type="button" className="pop-button pop-quiet" disabled={busy} onClick={() => submit({ type: "finish" })}>Finish run</button>}
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
+        <RoundFeedbackDialog open={review && !motion} onOpenChange={setReview} won={win}
+          title={win ? (gameId === 4 ? "Board complete!" : "Magaling!") : noHearts ? "No hearts left for this " + (gameId === 4 ? "board" : "word") : "Try again!"}
+          description={(win || noHearts ? "" : "One heart lost. ") + (run?.feedback?.text ?? "Continue when you’re ready.")}
+          answer={run?.feedback?.answer} points={run?.feedback?.points}
+          actionLabel={needsRefresh ? "Refresh run" : retry ? "Retry move" : nextLabel} busy={busy} onAction={continueReview}>
+          {error && <p role="alert">{error}</p>}
+          {gameId === 2 && playing && (run?.hits ?? 0) > 0 && !retry && <button type="button" className="pop-button pop-quiet" disabled={busy} onClick={() => submit({ type: "finish" })}>Finish run</button>}
+        </RoundFeedbackDialog>
 
         <Dialog.Root open={quit} onOpenChange={setQuit}>
           <Dialog.Portal><Dialog.Overlay className="pw-modal-overlay" />

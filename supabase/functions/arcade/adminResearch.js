@@ -5,7 +5,7 @@ const date = z.iso.datetime({ offset: true });
 const count = z.number().int().nonnegative();
 const choice = z.string().trim().min(1).max(120);
 const phase = z.enum(["pre", "post"]);
-const dataset = z.enum(["assessment", "attempt"]);
+const dataset = z.enum(["assessment", "attempt", "hint", "parameter"]);
 const skillId = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const emptyBody = z.strictObject({});
 const playerLookup = z.string().trim().pipe(z.union([uuid, z.string().regex(/^Player [0-9a-f]{10}$/i)]));
@@ -33,7 +33,14 @@ const studyState = z.object({
 });
 
 const exportIdentity = z.object({ participantId: uuid, condition: z.enum(["A", "B", "C"]) });
-const assessments = exportIdentity.extend({ phase, points: count, total: count });
+const assessments = exportIdentity.extend({
+  phase, points: count, total: count, skills: z.record(skillId, z.object({ points: count, total: count })).optional(),
+});
+const probability = z.number().min(0).max(1);
+const parameters = z.object({
+  skill: skillId, paramVersion: count, initial: probability, learn: probability, guess: probability, slip: probability,
+  masteryThreshold: probability, recordedAt: date,
+});
 const attempts = exportIdentity.extend({
   gameId: z.number().int().min(1).max(7),
   runId: uuid,
@@ -49,6 +56,22 @@ const attempts = exportIdentity.extend({
   responseMs: count,
   masteryBefore: z.number().min(0).max(1).nullable(),
   masteryAfter: z.number().min(0).max(1).nullable(),
+  paramVersion: count.nullable(),
+  recordedAt: date,
+});
+const hints = exportIdentity.extend({
+  gameId: z.number().int().min(1).max(7),
+  runId: uuid,
+  item: count,
+  skill: skillId,
+  level: z.number().int().min(1).max(3),
+  mastery: z.number().min(0).max(1).nullable(),
+  source: z.enum(["authored", "ai"]),
+  model: z.string().nullable(),
+  latencyMs: count,
+  cacheHit: z.boolean(),
+  text: z.string(),
+  recordedAt: date,
 });
 
 export function mountAdminResearch(router, route) {
@@ -104,7 +127,7 @@ export function mountAdminResearch(router, route) {
     name: "pandiwasto_admin_study_export",
     body: z.strictObject({ cohortId: uuid, dataset, page: z.number().int().min(0).max(10000) }),
     args: (_params, input) => ({ study_id: input.cohortId, dataset: input.dataset, page_number: input.page }),
-    response: z.object({ records: z.array(z.union([assessments, attempts])).max(200), hasMore: z.boolean() }),
+    response: z.object({ records: z.array(z.union([hints, attempts, parameters, assessments])).max(200), hasMore: z.boolean() }),
   }));
 
   router.get("/study/status", route({ name: "pandiwasto_study_status", response: studyState }));

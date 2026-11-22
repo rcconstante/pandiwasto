@@ -11,6 +11,7 @@ export interface PopRun {
   xp: number;
   word?: string;
   hintUsed?: boolean;
+  hintLevel?: number;
   hadMiss?: boolean;
   studyActive?: boolean;
   hintAllowed?: boolean;
@@ -18,8 +19,8 @@ export interface PopRun {
 
 type PopTap = PopRun & (
   { outcome: "continue" }
-  | { outcome: "miss"; root?: string }
-  | { outcome: "solved"; root: string; points: number }
+  | { outcome: "miss"; root?: string; roundHearts?: number }
+  | { outcome: "solved" | "skip"; root: string; points: number; roundHearts?: number }
 );
 
 export class ArcadeRequestError extends Error {
@@ -57,14 +58,98 @@ export const loadAccountProgress = (signal?: AbortSignal) => arcadeRequest<Arcad
 export const setDeveloperMode = (enabled: boolean) => arcadeRequest<ArcadeProgress>("developer/mode", { enabled });
 export const resetDeveloperProgress = (scope: "xp" | "gameplay", requestId: string) =>
   arcadeRequest<ArcadeProgress>("developer/reset", { scope, requestId });
-export const loadMastery = (signal?: AbortSignal) =>
-  arcadeRequest<{ skills: { skillId: string; mastery: number; attempts: number }[] }>("mastery", undefined, signal);
+export interface SkillMastery {
+  skillId: string;
+  mastery: number;
+  attempts: number;
+  mastered: boolean;
+}
+
+export const loadMastery = (signal?: AbortSignal) => arcadeRequest<{ skills: SkillMastery[] }>("mastery", undefined, signal);
+export const loadRoles = (signal?: AbortSignal) => arcadeRequest<{ admin: boolean; teacher: boolean }>("roles", undefined, signal);
 export const loadAdminStatus = (signal?: AbortSignal) =>
-  arcadeRequest<{ players: number; completedRuns: number; publishedScores: number }>("admin/status", undefined, signal);
+  arcadeRequest<{ players: number; completedRuns: number; publishedScores: number; hints?: number; aiHints?: number }>("admin/status", undefined, signal);
+
+export const checkHintProvider = () => arcadeRequest<{
+  configured: boolean; ok: boolean; model?: string | null; text?: string; error?: string; latencyMs?: number; available?: string[];
+}>("admin/hints/check", {});
+
+export type AccountRole ="student" | "teacher" | "admin";
+
+export interface Account {
+  id: string;
+  email: string;
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  avatar?: string | null;
+  role: AccountRole;
+  suspended: boolean;
+  createdAt: string;
+  lastSignInAt: string | null;
+}
+
+export interface ClassSummary {
+  id: string;
+  name: string;
+  teacherId: string | null;
+  teacherName: string | null;
+  students: number;
+}
+
+export interface StudentSummary {
+  id: string;
+  name: string;
+  alias: string;
+  avatar?: string | null;
+  xp: number;
+  lastActive: string | null;
+  skills: SkillMastery[];
+}
+
+export interface StudentDetail extends StudentSummary {
+  bestScores: Record<string, number>;
+  hints: number;
+  answers: {
+    gameId: number;
+    skillId: string;
+    item: string;
+    correct: boolean;
+    firstAttempt: boolean;
+    hintUsed: boolean;
+    timedOut: boolean;
+    responseMs: number;
+    masteryBefore: number | null;
+    masteryAfter: number | null;
+    at: string;
+  }[];
+}
+
+export const listAccounts = (search: string, page: number, signal?: AbortSignal) =>
+  arcadeRequest<{ accounts: Account[]; hasMore: boolean }>("admin/accounts/list", { search, page }, signal);
+export const createAccount = (account: { email: string; password: string; firstName: string; lastName: string; displayName: string; role: AccountRole }) =>
+  arcadeRequest<{ accountId: string }>("admin/accounts/create", account);
+export const setAccountRole = (accountId: string, role: AccountRole) => arcadeRequest<{ role: AccountRole }>("admin/accounts/role", { accountId, role });
+export const setAccountSuspended = (accountId: string, suspended: boolean) =>
+  arcadeRequest<{ suspended: boolean }>("admin/accounts/suspend", { accountId, suspended });
+export const loadClasses = (signal?: AbortSignal) =>
+  arcadeRequest<{ classes: ClassSummary[]; teachers: { id: string; name: string }[] }>("admin/classes", undefined, signal);
+export const saveClass = (classId: string | null, name: string, teacherId: string | null) =>
+  arcadeRequest<{ classId: string }>("admin/classes/save", { classId, name, teacherId });
+export const deleteClass = (classId: string) => arcadeRequest<{ deleted: true }>("admin/classes/delete", { classId });
+export const setClassMember = (classId: string, lookup: string, add: boolean) =>
+  arcadeRequest<{ students: number }>("admin/classes/member", { classId, lookup, add });
+export const loadTeacherClasses = (signal?: AbortSignal) =>
+  arcadeRequest<{ classes: { id: string; name: string; students: number }[] }>("teacher/classes", undefined, signal);
+export const loadClassRoster = (classId: string, signal?: AbortSignal) =>
+  arcadeRequest<{ name: string; students: StudentSummary[] }>("teacher/class", { classId }, signal);
+export const loadStudent = (classId: string, studentId: string, signal?: AbortSignal) =>
+  arcadeRequest<StudentDetail>("teacher/student", { classId, studentId }, signal);
 export const startPopRun = (requestId: string) => arcadeRequest<PopRun>("pop/start", { requestId });
 export const tapPopRun = (runId: string, tap: { tapId: string; expectedRound: number; removed: number[] }) =>
   arcadeRequest<PopTap>(`pop/${runId}/tap`, tap);
-export const hintPopRun = (runId: string, expectedRound: number) => arcadeRequest<{ text: string }>(`pop/${runId}/hint`, { expectedRound });
+export const hintPopRun = (runId: string, expectedRound: number, level: number) =>
+  arcadeRequest<{ text: string; level: number }>(`pop/${runId}/hint`, { expectedRound, level });
 export const endPopRun = (runId: string) => arcadeRequest(`pop/${runId}/end`, {});
 
 export type RankedMove =
@@ -88,6 +173,7 @@ export interface RankedSnapshot {
   options?: { id: string; label: string; type?: string; affix?: string; suffix?: string }[];
   rejected?: string[];
   hint?: string | null;
+  hintLevel?: number;
   studyActive?: boolean;
   hintAllowed?: boolean;
   word?: string;

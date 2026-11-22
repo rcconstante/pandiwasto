@@ -49,6 +49,6 @@ export function buildFortuneRun(firstRun: boolean) {
     root,
     prefix,
     answer: `${prefix}${root}`,
-    choices: shuffle(PREFIXES).map((form) => `${form}${root}`),
+    choices: shuffle([...PREFIXES.map((form) => `${form}${root}`), root]),
   }));
 }

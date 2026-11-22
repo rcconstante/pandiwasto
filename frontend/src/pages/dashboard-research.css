@@ -1,10 +1,6 @@
-.pwd-admin-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(10px, 2.7vw, 23px); margin-top: 20px; }
-.pwd-admin-panel, .pwd-study-note { min-width: 0; padding: clamp(11px, 2.1vw, 20px); border: 1px solid #d9e2d0; border-radius: 15px; background: #f0f6e8; overflow-wrap: anywhere; }
-.pwd-admin-panel h3, .pwd-study-layout h3 { margin-bottom: 7px; color: var(--pw-accent); font-size: clamp(18px, 2.3vw, 24px); font-weight: 850; letter-spacing: -.025em; }
-.pwd-admin-panel > :is(details, .pwd-study-note, p), .pwd-study-cohort-label { margin-top: 11px; }
-.pwd-admin-panel details .pwd-study-form { padding-bottom: 12px; }
-.pwd-admin-status { padding: 9px 12px; border-radius: 9px; background: #e7f3d6; }
-.pwd-admin-status[role="alert"] { background: #feece8; }
+.pwd-study-note { min-width: 0; padding: clamp(11px, 2.1vw, 20px); border: 1px solid #d9e2d0; border-radius: 15px; background: #f0f6e8; overflow-wrap: anywhere; }
+.pwd-study-layout h3 { margin-bottom: 7px; color: var(--pw-accent); font-size: clamp(18px, 2.3vw, 24px); font-weight: 850; letter-spacing: -.025em; }
+.pwd-study-cohort-label { margin-top: 11px; }
 .pwd-study-layout, .pwd-study-form { display: grid; gap: 10px; }
 .pwd-study-layout { margin-top: 12px; }
 .pwd-study-note p + p, .pwd-study-note :is(p, h3) + .pwd-save { margin-top: 9px; }
@@ -20,7 +16,6 @@
 .pwd-study-confirm input, .pwd-study-choices input { flex: 0 0 auto; width: 17px; height: 17px; accent-color: var(--pw-accent); }
 .pwd-study-primary { background: var(--pw-brand-gradient); border-color: #9ebe62; }
 .pwd-study-note > .pwd-save { margin-right: 7px; }
-.pwd-admin-panel .pwd-save, .pwd-study-layout .pwd-save { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
-.pwd-admin-panel .pwd-save:disabled, .pwd-study-layout .pwd-save:disabled { opacity: .55; cursor: default; }
+.pwd-study-layout .pwd-save { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+.pwd-study-layout .pwd-save:disabled { opacity: .55; cursor: default; }
 .pwd-study-withdraw { margin-block: 10px; }
-@media (max-width: 760px) { .pwd-admin-columns { grid-template-columns: minmax(0, 1fr); } }

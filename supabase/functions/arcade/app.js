@@ -1,7 +1,9 @@
 import { z } from "npm:zod@4.6.7";
+import { mountAdminAccounts } from "./adminAccounts.js";
 import { mountAdminResearch } from "./adminResearch.js";
-import { resolveHint } from "./hints.js";
+import { createHintResolver, hintLadder } from "./hints.js";
 import { mountRankedRoutes } from "./ranked-routes.js";
+import { mountTeacherRoutes } from "./teacher.js";
 
 const uuid = z.uuid();
 const positiveCount = z.number().int().nonnegative();
@@ -14,7 +16,7 @@ const answerBody = z.strictObject({
   expectedRound,
   response: z.string().regex(/^[A-Z]{0,32}$/),
 });
-const hintBody = z.strictObject({ expectedRound });
+const hintBody = z.strictObject({ expectedRound, level: z.number().int().min(1).max(3) });
 const tapBody = z.strictObject({
   tapId: uuid,
   expectedRound,
@@ -42,6 +44,7 @@ const snapshot = z.object({
   xp: positiveCount.max(100),
   word: promptWord.nullish(),
   hintUsed: z.boolean(),
+  hintLevel: z.number().int().min(0).max(3),
   hadMiss: z.boolean(),
   studyActive: z.boolean().optional(),
   hintAllowed: z.boolean().optional(),
@@ -51,12 +54,21 @@ const answerSnapshot = snapshot.extend({
   root: promptWord.nullish(),
   points: positiveCount.max(100),
   roundWord: promptWord,
+  roundHearts: z.number().int().min(0).max(3).optional(),
 });
-const hint = z.object({ text: z.string().min(1).max(300), word: promptWord.optional(), root: promptWord.optional() });
+const popHint = z.object({
+  level: z.number().int().min(1).max(3), fresh: z.boolean(), text: z.string().min(1).max(300),
+  word: promptWord, root: promptWord, skill: z.string().min(1).max(80),
+});
 const mastery = z.object({
-  skills: z.array(z.object({ skillId: z.string().min(1).max(80), mastery: z.number().min(0).max(1), attempts: positiveCount })),
+  skills: z.array(z.object({
+    skillId: z.string().min(1).max(80), mastery: z.number().min(0).max(1), attempts: positiveCount, mastered: z.boolean(),
+  })),
 });
-const adminStatus = z.object({ players: positiveCount, completedRuns: positiveCount, publishedScores: positiveCount });
+const roles = z.object({ admin: z.boolean(), teacher: z.boolean() });
+const adminStatus = z.object({
+  players: positiveCount, completedRuns: positiveCount, publishedScores: positiveCount, hints: positiveCount.optional(), aiHints: positiveCount.optional(),
+});
 const moderation = z.object({ hidden: z.boolean() });
 
 const PUBLIC_RPC_ERRORS = new Map([
@@ -207,6 +219,10 @@ export function createArcadeHandler({
         if (data.user.is_anonymous || !data.user.email_confirmed_at) {
           throw new ArcadeError(403, "Confirm your email to use the arcade.");
         }
+        // Suspension blocks new sign-ins at Auth; this also stops tokens issued before it.
+        if (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now()) {
+          throw new ArcadeError(403, "This account is suspended.");
+        }
 
         checkRateLimit(data.user.id);
         const params = Object.fromEntries(Object.entries(match.pathname.groups).map(([key, value]) => [key, decodeURIComponent(value)]));
@@ -220,7 +236,7 @@ export function createArcadeHandler({
           throw new ArcadeError(503, "Arcade storage is unavailable. Try again shortly.");
         };
 
-        return await handler({ params, body, rpc, json });
+        return await handler({ params, body, rpc, json, accountId: data.user.id, authAdmin: supabase.auth.admin });
       }
       return json({ error: "API route not found." }, 404);
     } catch (error) {
@@ -247,8 +263,42 @@ export function createArcadeHandler({
     };
   }
 
-  mountRankedRoutes(arcade, { ArcadeError, logError });
+  const resolveHint = createHintResolver(hintProvider);
+  // The hint is already shown; a failed research log must not break play.
+  async function logHint(rpc, { runId, skillId, itemIndex, level, text, source, model, latencyMs, cacheHit }) {
+    try {
+      await rpc("pandiwasto_hint_log", {
+        active_run: runId, skill: skillId, item_index: itemIndex, hint_level: level, hint_text: text,
+        hint_source: source, model_name: model, latency_ms: Math.round(latencyMs), cache_hit: cacheHit,
+      });
+    } catch {
+      logError("Hint log failed", { runId });
+    }
+  }
+
+  mountRankedRoutes(arcade, { ArcadeError, logError, resolveHint, logHint });
   mountAdminResearch(arcade, route);
+  mountAdminAccounts(arcade, { ArcadeError, route });
+  mountTeacherRoutes(arcade, route);
+  arcade.get("/roles", route({ name: "pandiwasto_roles", response: roles }));
+  // Admin check of the hint provider with a fixed sample item: no learner data is sent.
+  arcade.post("/admin/hints/check", async ({ rpc, json }) => {
+    const access = roles.safeParse(await rpc("pandiwasto_roles"));
+    if (!access.success || !access.data.admin) throw new ArcadeError(403, "You do not have access to this action.");
+    if (!hintProvider) return json({ configured: false, ok: false, error: "GEMINI_API_KEY is not set for the arcade function." });
+    const started = Date.now();
+    try {
+      const text = await hintProvider({
+        word: "SUMAKAY", rule: "May gitlapi sa loob. Tingnan ang mga titik pagkatapos ng unang titik.",
+        fact: "May gitlapi sa loob. Tingnan ang mga titik pagkatapos ng unang titik.", level: 1, wrong: [], signal: AbortSignal.timeout(8_000),
+      });
+      return json({ configured: true, ok: true, model: hintProvider.model ?? null, text, latencyMs: Date.now() - started });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const available = message.includes("404") ? await hintProvider.listModels?.().catch(() => undefined) : undefined;
+      return json({ configured: true, ok: false, model: hintProvider.model ?? null, error: message, latencyMs: Date.now() - started, available });
+    }
+  });
   arcade.get("/progress", route({ name: "pandiwasto_arcade_progress", response: progress }));
   arcade.post("/developer/mode", route({
     name: "pandiwasto_developer_mode",
@@ -283,15 +333,27 @@ export function createArcadeHandler({
       snapshot.extend({ outcome: z.literal("continue") }),
       answerSnapshot.extend({ outcome: z.literal("miss") }),
       answerSnapshot.extend({ outcome: z.literal("solved"), root: promptWord }),
+      answerSnapshot.extend({ outcome: z.literal("skip"), root: promptWord }),
     ]),
     args: ({ runId }, input) => ({ active_run: runId, tap_id: input.tapId, expected_round: input.expectedRound, removed: input.removed }),
     transform: (value) => value.outcome === "miss" && value.status !== "completed" ? { ...value, root: undefined } : value,
   }));
-  arcade.post("/pop/:runId/hint", route({
-    name: "pandiwasto_pop_hint", params: runParams, body: hintBody, response: hint,
-    args: ({ runId }, input) => ({ active_run: runId, expected_round: input.expectedRound }),
-    transform: async (value) => ({ text: await resolveHint(value, hintProvider) }),
-  }));
+  arcade.post("/pop/:runId/hint", async ({ params, body, rpc, json }) => {
+    const run = runParams.safeParse(params);
+    const input = hintBody.safeParse(body);
+    if (!run.success || !input.success) throw new ArcadeError(400, "Invalid arcade request.");
+    const item = popHint.safeParse(await rpc("pandiwasto_pop_hint", {
+      active_run: run.data.runId, expected_round: input.data.expectedRound, requested_level: input.data.level,
+    }));
+    if (!item.success) {
+      logError("Unexpected arcade response", { operation: "pandiwasto_pop_hint" });
+      throw new ArcadeError(503, "Arcade storage returned an unexpected response.");
+    }
+    const { level, fresh, text, word, root, skill } = item.data;
+    const hint = await resolveHint({ text: hintLadder(1, level, text, [root]), fact: text, level, word, secrets: [root], cacheKey: "1:" + word });
+    if (fresh) await logHint(rpc, { runId: run.data.runId, skillId: skill, itemIndex: input.data.expectedRound, level, ...hint });
+    return json({ text: hint.text, level });
+  });
   arcade.post("/pop/:runId/end", route({
     name: "pandiwasto_pop_end", params: runParams, body: endBody, response: snapshot,
     args: ({ runId }) => ({ active_run: runId }),

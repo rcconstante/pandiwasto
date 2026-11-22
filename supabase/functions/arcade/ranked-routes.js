@@ -36,6 +36,7 @@ const publicRun = z.object({
     points: number, answer: z.string().optional(),
   }).nullable(),
   hint: z.string().nullable(),
+  hintLevel: number.max(3),
   studyActive: z.boolean().optional(),
   hintAllowed: z.boolean().optional(),
   rejected: z.array(z.string()),
@@ -57,7 +58,7 @@ const publicRun = z.object({
   cards: z.array(z.object({ id: number.max(9), word: z.string().nullable(), matched: z.boolean(), hinted: z.boolean() })).optional(),
 });
 
-export function mountRankedRoutes(router, { ArcadeError, logError }) {
+export function mountRankedRoutes(router, { ArcadeError, logError, resolveHint, logHint }) {
   function projectResult(json, value, run) {
     const parsed = publicRun.safeParse({ ...value, studyActive: run.studyActive, hintAllowed: run.hintAllowed });
     if (parsed.success) return json({ ...parsed.data, serverNow: Date.now() });
@@ -125,6 +126,8 @@ export function mountRankedRoutes(router, { ArcadeError, logError }) {
       if (error instanceof RankedMoveError) throw new ArcadeError(error.status, error.message);
       throw error;
     }
+    const hint = next.hintRequest && await resolveHint(next.hintRequest);
+    if (hint) next.state = { ...next.state, hint: hint.text };
 
     const result = publicRun.parse(projectRanked({
       runId, version: version + 1, status: next.abandon ? "abandoned" : next.complete ? "completed" : "active", state: next.state,
@@ -136,6 +139,7 @@ export function mountRankedRoutes(router, { ArcadeError, logError }) {
       observations: next.observations, hint_context: next.hintContext ?? null,
     });
     const committed = getRun(saved, gameId, runId);
+    if (hint) await logHint(rpc, { runId, skillId: next.hintContext.skillId, itemIndex: next.hintContext.itemIndex, level: next.hintRequest.level, ...hint });
     return projectResult(json, committed.response, committed);
   });
 }

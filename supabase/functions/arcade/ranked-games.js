@@ -4,9 +4,12 @@ import { buildMemoryRun, memoryScore } from "./items/memoryGame.ts";
 import { buildTicketRun, ticketWord, TICKET_LEVERS } from "./items/ticketGame.ts";
 import { buildClawRun, CLAW_ROLES } from "./items/clawGame.ts";
 import { buildFortuneRun, FORTUNE_HINTS } from "./items/fortuneGame.ts";
+import { HINT_LEVELS, hintLadder } from "./hints.js";
 
 const ENGINE_VERSION = 1;
 const CHOICE_ROUNDS = 5;
+const WHACK_ROUNDS = 10;
+const ROUND_HEARTS = 3;
 const MAX_WHACK_HITS = 200;
 const MEMORY_PAUSE_MS = 1400;
 const SKILLS = {
@@ -88,7 +91,7 @@ function choiceRounds(gameId) {
 }
 
 function blankRound(state, now) {
-  return { ...state, phase: "playing", feedback: null, hint: null, rejected: [], beganAt: now };
+  return { ...state, phase: "playing", feedback: null, hint: null, hintLevel: 0, rejected: [], hearts: ROUND_HEARTS, beganAt: now };
 }
 
 function blankMemoryBoard(state) {
@@ -112,7 +115,7 @@ export function createRankedState(gameId, mode, now = Date.now()) {
   if (mode === "practice" && gameId !== 2) throw new RankedMoveError(400, "Practice mode is only available for Whack-a-Word.");
   const state = blankRound({ engine: ENGINE_VERSION, gameId, mode, round: 0, score: 0, xp: 0, results: [] }, now);
   if (gameId === 2) {
-    return withHintContext({ ...state, deck: dealWhackDeck(), deckIndex: 0, hearts: 3, hits: 0, deadline: mode === "practice" ? null : now + whackWindow(0) });
+    return withHintContext({ ...state, deck: dealWhackDeck(), deckIndex: 0, hits: 0, deadline: mode === "practice" ? null : now + whackWindow(0) });
   }
   if (gameId === 4) return withHintContext(blankMemoryBoard({ ...state, boards: buildMemoryRun(false) }));
   return withHintContext({ ...state, rounds: choiceRounds(gameId) });
@@ -136,17 +139,19 @@ function observation(state, details, now, itemIndex = state.round) {
 }
 
 function getHintCard(state, board) {
+  if (state.hintCard !== null) return state.hintCard;
   const first = state.hideAt === null ? state.faceUp[0] : undefined;
   return first ?? board.cards.findIndex((_, index) => !state.matched.includes(index));
 }
 
 function withHintContext(state) {
   let hintContext = null;
-  if (state.phase === "playing" && !state.hint && state.gameId !== 2) {
+  if (state.phase === "playing" && (state.hintLevel ?? 0) < HINT_LEVELS && state.gameId !== 2) {
     if (state.gameId === 4) {
       const board = state.boards[state.round];
-      const card = board.cards[getHintCard(state, board)];
-      if (card) {
+      const index = getHintCard(state, board);
+      const card = board.cards[index];
+      if (card && !state.matched.includes(index)) {
         const pairIndex = board.pairs.findIndex(({ compound }) => compound === card.pair.compound);
         hintContext = { skillId: SKILLS[4], itemIndex: state.round * 10 + pairIndex };
       }
@@ -157,8 +162,8 @@ function withHintContext(state) {
   return { ...state, hintContext };
 }
 
-function transition(state, { complete = false, abandon = false, observations = [], hintContext } = {}) {
-  return { state: withHintContext(state), complete, abandon, observations, hintContext };
+function transition(state, { complete = false, abandon = false, observations = [], hintContext, hintRequest } = {}) {
+  return { state: withHintContext(state), complete, abandon, observations, hintContext, hintRequest };
 }
 
 function reject(message = "That action is unavailable at this stage.") {
@@ -167,7 +172,13 @@ function reject(message = "That action is unavailable at this stage.") {
 
 function whackMove(state, action, now) {
   if (action.type === "finish" && state.hits > 0) return transition(state, { complete: true });
-  if (action.type === "next" && state.phase === "review") return transition(nextWhack(state, now));
+  if (action.type === "next" && state.phase === "review") {
+    if (state.hearts > 0 && state.feedback?.kind !== "correct") {
+      return transition({ ...state, phase: "playing", feedback: null,
+        deadline: state.mode === "practice" ? null : now + whackWindow(state.hits) });
+    }
+    return transition(nextWhack(state, now));
+  }
   if (state.phase !== "playing") return reject();
   if (action.type !== "timeout" && action.type !== "answer") return reject();
 
@@ -176,17 +187,21 @@ function whackMove(state, action, now) {
   if (action.type === "answer" && !WORD_TYPES.some(({ id }) => id === action.choice)) return reject("Choose a word type in this round.");
   const word = state.deck[state.deckIndex];
   const correct = !timedOut && word.type === action.choice;
-  const hearts = state.hearts - Number(!correct);
+  const hearts = (state.hearts ?? ROUND_HEARTS) - Number(!correct);
   const hits = state.hits + Number(correct);
-  const complete = hearts === 0 || hits === MAX_WHACK_HITS;
+  const roundOver = correct || hearts === 0;
+  const complete = (roundOver && state.round >= WHACK_ROUNDS - 1) || hits === MAX_WHACK_HITS;
   const type = WORD_TYPES.find(({ id }) => id === word.type);
   const next = {
-    ...state, hearts, hits, score: hits * 100, xp: hits * 10, deadline: null, phase: "review",
-    feedback: feedback(timedOut ? "timeout" : correct ? "correct" : "wrong", word.text + " ay " + type.label + ". " + type.explanation, correct ? 100 : 0, type.label),
+    ...state, hearts, hits, score: hits * 100, xp: hits * 10,
+    deadline: null, phase: "review",
+    feedback: feedback(timedOut ? "timeout" : correct ? "correct" : "wrong",
+      roundOver ? word.text + " ay " + type.label + ". " + type.explanation : timedOut ? "Naubos ang oras. Subukan muli." : "Subukan ang isa pang sagot.",
+      correct ? 100 : 0, roundOver ? type.label : undefined),
   };
   return transition(next, {
     complete,
-    observations: [observation(state, { skill: SKILLS[2], itemId: word.text, correct, firstAttempt: true, hintUsed: false, timedOut }, now)],
+    observations: [observation(state, { skill: SKILLS[2], itemId: word.text, correct, firstAttempt: state.hearts === ROUND_HEARTS, hintUsed: false, timedOut }, now)],
   });
 }
 
@@ -197,10 +212,22 @@ function moveChoice(state, action, now) {
     return transition(blankRound({ ...state, round: state.round + 1 }, now));
   }
   if (state.phase !== "playing") return reject();
-  if (action.type === "hint" && !state.hint) {
-    return transition({ ...state, hint: current.hint }, { hintContext: { skillId: current.skill, itemIndex: state.round } });
+  if (action.type === "hint") {
+    const level = (state.hintLevel ?? 0) + 1;
+    if (level > HINT_LEVELS) return reject("No more hints for this round.");
+    const label = (id) => current.view.options.find((option) => option.id === id)?.label ?? id;
+    const secrets = [current.summary, label(current.answer)];
+    // Every option's example may show; only the answer word is withheld from the ladder.
+    const text = hintLadder(state.gameId, level, current.hint, [current.summary]);
+    return transition({ ...state, hint: text, hintLevel: level }, {
+      hintContext: { skillId: current.skill, itemIndex: state.round },
+      hintRequest: {
+        level, text, fact: current.hint, secrets, word: current.view.sentence ?? current.view.root,
+        wrong: state.rejected.map(label), cacheKey: state.gameId + ":" + current.itemId,
+      },
+    });
   }
-  if (action.type !== "answer" || !current.view.options.some(({ id }) => id === action.choice) || state.rejected.includes(action.choice)) {
+  if (action.type !== "answer" || !current.view.options.some(({ id }) => id === action.choice)) {
     return reject("Choose an available answer in this round.");
   }
   const correct = action.choice === current.answer;
@@ -208,14 +235,22 @@ function moveChoice(state, action, now) {
     skill: current.skill, itemId: current.itemId, correct, firstAttempt: state.rejected.length === 0, hintUsed: Boolean(state.hint),
   }, now)];
   if (!correct) {
+    const hearts = (state.hearts ?? ROUND_HEARTS) - 1;
+    const skipped = hearts === 0;
+    const complete = skipped && state.round + 1 === state.rounds.length;
     return transition({
-      ...state, rejected: [...state.rejected, action.choice], feedback: feedback("wrong", "Subukan ang isa pang sagot."),
-    }, { observations });
+      ...state, hearts, phase: skipped ? "review" : "playing",
+      xp: complete ? state.results.filter(({ points }) => points > 0).length * 20 : state.xp,
+      rejected: [...new Set([...state.rejected, action.choice])],
+      feedback: skipped ? feedback("wrong", current.explanation, 0, current.summary) : feedback("wrong", "Subukan ang isa pang sagot."),
+      results: skipped ? [...state.results, { text: current.summary, points: 0 }] : state.results,
+    }, { complete, observations });
   }
   const points = 100 - (state.hint ? 25 : 0) - (state.rejected.length ? 25 : 0);
   const complete = state.round + 1 === state.rounds.length;
   const next = {
-    ...state, phase: "review", score: state.score + points, xp: complete ? 100 : 0,
+    ...state, phase: "review", score: state.score + points,
+    xp: complete ? (state.results.filter((result) => result.points > 0).length + 1) * 20 : state.xp,
     feedback: feedback("correct", current.explanation, points, current.summary),
     results: [...state.results, { text: current.summary, points }],
   };
@@ -232,13 +267,19 @@ function moveMemory(state, action, now) {
   const hideAt = state.hideAt;
   if (hideAt !== null && now < hideAt) return reject("Wait for the cards to turn over.");
   const faceUp = hideAt === null ? state.faceUp : [];
-  if (action.type === "hint" && state.hintCard === null) {
+  if (action.type === "hint") {
+    const level = (state.hintLevel ?? 0) + 1;
     const hintCard = getHintCard(state, board);
-    const pair = board.cards[hintCard].pair;
+    if (level > HINT_LEVELS || hintCard < 0 || state.matched.includes(hintCard)) return reject("No more hints on this board.");
+    const card = board.cards[hintCard];
+    const text = hintLadder(4, level, card.pair.meaning, [card.pair.compound]);
     return transition({
-      ...state, faceUp, hideAt: null, hintCard, hint: pair.meaning,
+      ...state, faceUp, hideAt: null, hintCard, hint: text, hintLevel: level,
       score: state.bankedScore + memoryScore(state.matched.length / 2, state.misses, true),
-    }, { hintContext: { skillId: SKILLS[4], itemIndex: state.round * 10 + board.pairs.findIndex(({ compound }) => compound === pair.compound) } });
+    }, {
+      hintContext: { skillId: SKILLS[4], itemIndex: state.round * 10 + board.pairs.findIndex(({ compound }) => compound === card.pair.compound) },
+      hintRequest: { level, text, fact: card.pair.meaning, secrets: [card.pair.compound], word: card.word, wrong: [], cacheKey: "4:" + card.pair.compound },
+    });
   }
   if (action.type !== "flip" || !board.cards[action.cardId] || state.matched.includes(action.cardId)) {
     return reject("Choose an unmatched card on this board.");
@@ -257,18 +298,21 @@ function moveMemory(state, action, now) {
     hintUsed: state.hintCard !== null && board.cards[state.hintCard].pair.compound === pair.compound,
   }, now, state.round * 10 + board.pairs.findIndex(({ compound }) => compound === pair.compound))];
   const boardComplete = matched.length === board.cards.length;
-  const complete = boardComplete && state.round === state.boards.length - 1;
+  const hearts = (state.hearts ?? ROUND_HEARTS) - Number(!match);
+  const skipped = hearts === 0;
+  const complete = (boardComplete || skipped) && state.round === state.boards.length - 1;
   const boardPoints = memoryScore(matched.length / 2, misses, state.hintCard !== null);
   return transition({
-    ...state, matched, misses, observed, moves: state.moves + 1,
+    ...state, matched, misses, observed, hearts, moves: state.moves + 1,
     score: state.bankedScore + boardPoints,
-    xp: complete ? 100 : 0,
-    phase: boardComplete ? "review" : "playing",
+    xp: complete ? Math.floor(100 * (state.results.length + Number(match)) / state.boards.reduce((total, item) => total + item.pairs.length, 0)) : state.xp,
+    phase: boardComplete || skipped ? "review" : "playing",
     faceUp: match ? [] : [first, action.cardId],
     hideAt: match ? null : now + MEMORY_PAUSE_MS,
     feedback: match
       ? feedback(boardComplete ? "board-complete" : "match", pair.meaning, boardComplete ? boardPoints : 100, pair.compound)
-      : feedback("mismatch", "Hindi magkatugma ang mga salita. Subukan muli."),
+      : skipped ? feedback("mismatch", pair.meaning, 0, pair.compound)
+        : feedback("mismatch", "Hindi magkatugma ang mga salita. Subukan muli."),
     results: match ? [...state.results, { text: pair.compound, points: 100, meaning: pair.meaning }] : state.results,
   }, { complete, observations });
 }
@@ -282,17 +326,18 @@ export function moveRanked(state, action, now = Date.now()) {
 
 export function projectRanked(run, now = Date.now()) {
   const state = run.state;
-  const totalRounds = state.gameId === 2 ? null : state.gameId === 4 ? state.boards.length : CHOICE_ROUNDS;
+  const totalRounds = state.gameId === 2 ? WHACK_ROUNDS : state.gameId === 4 ? state.boards.length : CHOICE_ROUNDS;
   const shared = {
     runId: run.runId, version: run.version, status: run.status, gameId: state.gameId,
     round: state.round, totalRounds, phase: state.phase, score: state.score, xp: state.xp,
-    mode: state.mode, serverNow: now, feedback: state.feedback, hint: state.hint, rejected: state.rejected, results: state.results,
+    mode: state.mode, serverNow: now, feedback: state.feedback, hint: state.hint, hintLevel: state.hintLevel ?? 0, rejected: state.rejected, results: state.results,
+    hearts: state.hearts ?? ROUND_HEARTS,
   };
   if (run.status === "abandoned") return { ...shared, feedback: null, hint: null };
   if (state.gameId === 2) {
-    const { hearts, hits, deadline, deck, deckIndex } = state;
+    const { hits, deadline, deck, deckIndex } = state;
     return {
-      ...shared, hearts, hits, deadline,
+      ...shared, hits, deadline,
       word: deck[deckIndex].text, options: WORD_TYPES.map(({ id, label }) => ({ id, label })),
     };
   }

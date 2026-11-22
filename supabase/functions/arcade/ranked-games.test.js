@@ -10,7 +10,7 @@ for (const gameId of [3, 5, 6, 7]) {
     let state = createRankedState(gameId, "ranked", epoch);
     assert.equal(state.rounds.length, 5);
     assert.equal(frame(state).round, 0);
-    assert.equal(frame(state).options.length > 1, true);
+    assert.equal(frame(state).options.length, gameId === 5 ? 2 : 4);
     assert.equal("rounds" in frame(state), false);
     assert.equal("answer" in frame(state), false);
     assert.throws(() => moveRanked(state, { type: "answer", choice: "not-an-option" }, epoch), RankedMoveError);
@@ -25,10 +25,30 @@ for (const gameId of [3, 5, 6, 7]) {
     assert.equal(retry.observations[0].responseMs, 45);
     assert.equal(retry.observations[0].correct, false);
     assert.equal("answer" in retry.state.feedback, false);
-    assert.throws(() => moveRanked(retry.state, { type: "answer", choice: wrong }, epoch + 50), RankedMoveError);
+    const secondMiss = moveRanked(retry.state, { type: "answer", choice: wrong }, epoch + 50);
+    assert.equal(secondMiss.state.hearts, 1);
+    const skipped = moveRanked(secondMiss.state, { type: "answer", choice: wrong }, epoch + 51);
+    assert.equal(skipped.state.hearts, 0);
+    assert.equal(skipped.state.feedback.answer, item.summary);
+    assert.equal(skipped.state.phase, "review");
+    const fresh = moveRanked(skipped.state, { type: "next" }, epoch + 52);
+    assert.equal(fresh.state.hearts, 3);
+    assert.equal(fresh.state.round, 1);
 
     const guided = moveRanked(retry.state, { type: "hint" }, epoch + 60);
     assert.deepEqual(guided.hintContext, { skillId: item.skill, itemIndex: 0 });
+    assert.equal(guided.hintRequest.level, 1);
+    assert.equal(frame(guided.state).hintLevel, 1);
+    let ladder = guided;
+    for (const level of [2, 3]) {
+      ladder = moveRanked(ladder.state, { type: "hint" }, epoch + 60 + level);
+      assert.equal(ladder.state.hintLevel, level);
+      assert.ok(ladder.hintRequest.secrets.includes(item.summary));
+      // Level 2 restates every option's rule; level 3 examples must not show this item's answer.
+      if (ladder.state.hint.startsWith("Halimbawa")) assert.ok(!ladder.state.hint.toLowerCase().includes(item.summary.toLowerCase()));
+    }
+    assert.equal(ladder.state.hintContext, null);
+    assert.throws(() => moveRanked(ladder.state, { type: "hint" }, epoch + 64), RankedMoveError);
     const solved = moveRanked(guided.state, { type: "answer", choice: item.answer }, epoch + 110);
     assert.equal(solved.state.score, 50);
     assert.equal(solved.state.feedback.answer, item.summary);
@@ -45,10 +65,19 @@ for (const gameId of [3, 5, 6, 7]) {
     assert.equal(state.score, 450);
     assert.equal(state.xp, 100);
     assert.equal(state.results.length, 5);
+    const lastItem = state.rounds[4];
+    const lastWrong = lastItem.view.options.find(({ id }) => id !== lastItem.answer).id;
+    let missedFinal = { ...state, phase: "playing", hearts: 3, rejected: [], results: state.results.slice(0, -1), xp: 0 };
+    for (let miss = 1; miss <= 3; miss += 1) {
+      const result = moveRanked(missedFinal, { type: "answer", choice: lastWrong }, epoch + 5000 + miss);
+      assert.equal(result.complete, miss === 3);
+      missedFinal = result.state;
+    }
+    assert.equal(missedFinal.xp, 80);
   });
 }
 
-Deno.test("Whack validates deadlines, awards XP on hits, and completes after three strikes", () => {
+Deno.test("Whack retries the same word after a miss, refills hearts after review, and awards XP for hits", () => {
   const start = createRankedState(2, "ranked", epoch);
   assert.equal(frame(start).deadline, epoch + 10_000);
   assert.throws(() => moveRanked(start, { type: "timeout" }, epoch + 9_999), RankedMoveError);
@@ -59,6 +88,8 @@ Deno.test("Whack validates deadlines, awards XP on hits, and completes after thr
   assert.equal(timeout.state.score, 0);
 
   let state = moveRanked(timeout.state, { type: "next" }, epoch + 10_000).state;
+  assert.equal(state.round, 0);
+  assert.equal(state.hearts, 2);
   for (let hit = 0; hit < 5; hit += 1) {
     const now = epoch + 10_000 + hit * 200;
     state = moveRanked(state, { type: "answer", choice: state.deck[state.deckIndex].type }, now + 100).state;
@@ -72,10 +103,15 @@ Deno.test("Whack validates deadlines, awards XP on hits, and completes after thr
 
   state = moveRanked(state, { type: "timeout" }, state.deadline).state;
   state = moveRanked(state, { type: "next" }, epoch + 20_000).state;
+  state = moveRanked(state, { type: "timeout" }, state.deadline).state;
+  state = moveRanked(state, { type: "next" }, state.beganAt + 30_000).state;
   const lose = moveRanked(state, { type: "timeout" }, state.deadline);
-  assert.equal(lose.complete, true);
+  assert.equal(lose.complete, false);
   assert.equal(lose.state.hearts, 0);
   assert.equal(lose.state.xp, 50);
+  const advance = moveRanked(lose.state, { type: "next" }, state.deadline + 100).state;
+  assert.equal(advance.round, 6);
+  assert.equal(advance.hearts, 3);
 
   const practice = createRankedState(2, "practice", epoch);
   assert.equal(frame(practice).deadline, null);
@@ -122,4 +158,22 @@ Deno.test("Memory conceals cards, tracks mismatches, and banks three board score
   assert.equal(state.score, 1160);
   assert.equal(state.xp, 100);
   assert.equal(moveRanked(createRankedState(4, "ranked"), { type: "abandon" }).abandon, true);
+});
+
+Deno.test("Memory advances after three mismatches and refills its hearts", () => {
+  let now = epoch;
+  let state = createRankedState(4, "ranked", now);
+  const board = state.boards[0];
+  const mismatch = board.cards.findIndex((card) => card.pair.compound !== board.cards[0].pair.compound);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    state = moveRanked(state, { type: "flip", cardId: 0 }, now).state;
+    state = moveRanked(state, { type: "flip", cardId: mismatch }, ++now).state;
+    assert.equal(frame(state, now).hearts, 2 - attempt);
+    now = state.hideAt;
+  }
+  assert.equal(state.phase, "review");
+  assert.ok(state.feedback.answer);
+  const next = moveRanked(state, { type: "next" }, now).state;
+  assert.equal(next.round, 1);
+  assert.equal(next.hearts, 3);
 });

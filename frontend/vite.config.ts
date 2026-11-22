@@ -8,6 +8,8 @@ export default defineConfig({
     react(),
     tailwindcss()
   ],
+  // Lesson text is shared with the arcade Edge Function.
+  server: { fs: { allow: [".", "../supabase/functions/arcade/items"] } },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

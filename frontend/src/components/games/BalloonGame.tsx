@@ -1,9 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CircleHelp, Lightbulb, RotateCcw, Star, Undo2, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Lightbulb, RotateCcw, Undo2, Volume2, VolumeX } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { MAX_ROUND_SCORE, XP_PER_ROUND } from "@/data/balloonGame";
 import { ArcadeRequestError, endPopRun, hintPopRun, startPopRun, tapPopRun, type PopRun } from "@/lib/arcadeApi";
 import { ArcadeCue, ArcadeHearts, ArcadeScore } from "./ArcadeFeedback";
+import { RoundFeedbackDialog } from "./RoundFeedbackDialog";
+import { waitForGameMotion } from "./gameMotion";
 import { useArcadeSound } from "./useArcadeSound";
 import "./balloon-game.css";
 
@@ -13,7 +15,7 @@ interface RoundResult {
 }
 
 const COLORS = ["grape", "coral", "aqua", "gold"];
-const CELEBRATION_SPARKS = Array.from({ length: 12 }, (_, index) => index);
+const POP_MOTION_MS = 280;
 const STARTING_HEARTS = 3;
 
 export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
@@ -25,11 +27,12 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   const [screen, setScreen] = useState<"intro" | "round" | "results">("intro");
   const [roundIndex, setRoundIndex] = useState(0);
   const [popped, setPopped] = useState<number[]>([]);
-  const [hintUsed, setHintUsed] = useState(false);
+  const [hintLevel, setHintLevel] = useState(0);
+  const hintUsed = hintLevel > 0;
   const [showError, setShowError] = useState(false);
   const [lives, setLives] = useState(STARTING_HEARTS);
   const [results, setResults] = useState<RoundResult[]>([]);
-  const [lostRoot, setLostRoot] = useState("");
+  const [missedBalloon, setMissedBalloon] = useState<number>();
   const [newBest, setNewBest] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
@@ -54,7 +57,9 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   const letters = [...word];
   const answer = letters.filter((_, index) => !popped.includes(index)).join("");
   const roundResult = serverResult;
-  const roundSolved = Boolean(roundResult);
+  const roundOver = roundResult !== null;
+  const roundWon = Boolean(roundResult?.score);
+  const nextLabel = roundIndex === roundCount - 1 || run?.status === "completed" ? "See results" : "Next word";
   const points = run?.score ?? results.reduce((total, result) => total + result.score, 0);
   const maxPoints = roundCount * MAX_ROUND_SCORE;
   const earnedXp = run?.xp ?? results.length * XP_PER_ROUND;
@@ -68,14 +73,15 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   }, [screen, roundIndex]);
 
   useEffect(() => {
-    if (roundSolved && !celebrating && screen === "round") nextButton.current?.focus({ preventScroll: true });
-  }, [celebrating, roundSolved, screen]);
+    if (roundOver && !celebrating && screen === "round") nextButton.current?.focus({ preventScroll: true });
+  }, [celebrating, roundOver, screen]);
 
   function resetRound() {
     setPopped([]);
-    setHintUsed(false);
+    setHintLevel(0);
     setShowError(false);
     setServerResult(null);
+    setMissedBalloon(undefined);
     setHintFromServer("");
     pendingTap.current = null;
     setRetryTap(false);
@@ -113,10 +119,9 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
       setLives(snapshot.hearts);
       setWordFromServer(snapshot.word ?? "");
       setResults([]);
-      setLostRoot("");
       setNewBest(false);
       if (snapshot.status === "active" && snapshot.word) {
-        setHintUsed(Boolean(snapshot.hintUsed));
+        setHintLevel(snapshot.hintLevel ?? 0);
         setScreen("round");
       } else {
         if (snapshot.status !== "completed") throw new Error("This run ended. Start a new game.");
@@ -129,15 +134,15 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   function requestHint() {
     if (!run) return;
     void withServer(async () => {
-      const data = await hintPopRun(run.runId, roundIndex);
+      const data = await hintPopRun(run.runId, roundIndex, hintLevel + 1);
       setHintFromServer(data.text);
-      setHintUsed(true);
+      setHintLevel(data.level);
     });
   }
 
   const showStudyHint = useEffectEvent(() => requestHint());
   useEffect(() => {
-    if (!showError || screen !== "round" || run?.status !== "active" || !run.studyActive || !run.hintAllowed || hintUsed || networkBusy || retryTap || confirmExit) return;
+    if (!showError || roundOver || screen !== "round" || run?.status !== "active" || !run.studyActive || !run.hintAllowed || hintLevel >= 3 || networkBusy || retryTap || confirmExit) return;
     const key = run.runId + ":" + roundIndex + ":" + run.hearts;
     if (automaticHint.current === key) return;
     const timer = window.setTimeout(() => {
@@ -145,10 +150,10 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
       showStudyHint();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [showError, screen, run, hintUsed, networkBusy, retryTap, confirmExit, roundIndex]);
+  }, [showError, roundOver, screen, run, hintLevel, networkBusy, retryTap, confirmExit, roundIndex]);
 
   function popLetter(index: number) {
-    if (roundSolved || requestPending.current || retryTap || networkError) return;
+    if (roundOver || requestPending.current || retryTap || networkError) return;
     if (popped.includes(index)) {
       setPopped((previous) => previous.filter((position) => position !== index));
       setShowError(false);
@@ -177,28 +182,28 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
       pendingTap.current = null;
       setRetryTap(false);
       setRun(result);
-      setLives(result.hearts);
-      setShowError(result.outcome === "miss");
-      if (result.outcome === "miss") {
-        sound("miss");
-        if (result.status === "completed") {
-          setLostRoot(result.root ?? "");
-          finishRun(result.score, result.xp);
-          setScreen("results");
-        }
+      if (result.outcome === "continue") {
+        setPopped(next.removed);
+        sound("pop");
+        setShowError(false);
         return;
       }
 
-      setPopped(next.removed);
-      if (result.outcome === "continue") {
-        sound("pop");
-        return;
+      setLives(result.roundHearts ?? result.hearts);
+      const won = result.outcome === "solved";
+      const endedRound = won || result.outcome === "skip" || result.status === "completed";
+      setShowError(!won);
+      if (won) setPopped(next.removed);
+      else setMissedBalloon(next.removed.at(-1));
+      sound(won ? "correct" : "miss");
+      await waitForGameMotion(POP_MOTION_MS);
+      setMissedBalloon(undefined);
+      if (endedRound) {
+        const resolved = { root: result.root ?? "", score: result.outcome === "solved" ? result.points : 0 };
+        setServerResult(resolved);
+        if (resolved.root) setResults((previous) => [...previous, resolved]);
       }
-      const solved = { root: result.root, score: result.points };
-      setServerResult(solved);
-      setResults((previous) => [...previous, solved]);
       setCelebrating(true);
-      sound("correct");
       if (result.status === "completed") finishRun(result.score, result.xp);
     });
   }
@@ -210,6 +215,7 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
     } else {
       resetRound();
       setRoundIndex(run?.round ?? roundIndex + 1);
+      setLives(run?.hearts ?? STARTING_HEARTS);
       if (run?.word) setWordFromServer(run.word);
     }
   }
@@ -254,36 +260,20 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
           </Dialog.Portal>
         </Dialog.Root>
 
-        <Dialog.Root open={celebrating} onOpenChange={setCelebrating}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="pw-modal-overlay pop-celebration-overlay" />
-            <Dialog.Content className="pw-modal pop-celebration" onCloseAutoFocus={(event) => event.preventDefault()}>
-              <div className="pop-celebration-sparks" aria-hidden="true">
-                {CELEBRATION_SPARKS.map((index) => <i key={index} style={{ rotate: `${index * 30}deg` }} />)}
-              </div>
-              <img src={`${base}pandiwasto-mascot.webp`} alt="" width="92" height="92" />
-              <Dialog.Title>Magaling!</Dialog.Title>
-              <Dialog.Description className="pop-celebration-description">
-                You found the root word.
-                <strong lang="fil">{roundResult?.root}</strong>
-              </Dialog.Description>
-              <div className="pop-celebration-answer" aria-label={`${word} becomes ${roundResult?.root ?? ""}`}>
-                {word} <ArrowRight size={16} aria-hidden="true" /> {roundResult?.root}
-              </div>
-              <span className="pop-celebration-score"><Star size={17} aria-hidden="true" /> +{roundResult?.score} points</span>
-              <button type="button" className="pop-button pop-primary" onClick={advance}>
-                {roundIndex === roundCount - 1 ? "See results" : "Next word"} <ArrowRight size={19} aria-hidden="true" />
-              </button>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
+        <RoundFeedbackDialog open={celebrating} onOpenChange={setCelebrating} won={roundWon}
+          title={roundWon ? "Magaling!" : roundOver ? "No hearts left for this word" : "Try again!"}
+          description={roundWon ? "You found the root word." : roundOver ? "Review the root word and keep learning." : "One heart lost. Keep that letter and pop a different one."}
+          answer={roundResult?.root} points={roundResult?.score}
+          actionLabel={roundOver ? nextLabel : "Try again"} onAction={roundOver ? advance : () => setCelebrating(false)}>
+          {!roundOver && hintUsed && hint && <p lang="fil">{hint}</p>}
+        </RoundFeedbackDialog>
 
         {screen === "intro" && (
           <section className="pop-intro" aria-labelledby="pop-title">
             <div>
               <p className="pop-skill">Salitang-Ugat</p>
               <h1 id="pop-title" ref={(node) => { focusTarget.current = node; }} tabIndex={-1}>Pop Goes<br />the Word!</h1>
-              <p className="pop-intro-copy">Pop the extra letters to keep the root word. Popping a letter needed for the root costs one of your three hearts.</p>
+              <p className="pop-intro-copy">Pop the extra letters to keep the root word. You get three hearts for each word. Popping a letter needed for the root costs one heart.</p>
               <div className="pop-example" aria-label="Example: sumakay becomes sakay">
                 <span>S<span className="pop-strike">UM</span>AKAY</span><ArrowRight size={19} aria-hidden="true" /><strong>SAKAY</strong>
               </div>
@@ -318,10 +308,11 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
                     type="button"
                     className="pop-balloon"
                     data-color={COLORS[(index + roundIndex) % COLORS.length]}
+                    data-miss={missedBalloon === index || undefined}
                     aria-label={`${popped.includes(index) ? "Restore" : "Pop"} ${letter}, letter ${index + 1}`}
                     aria-pressed={popped.includes(index)}
                     onClick={() => popLetter(index)}
-                    disabled={roundSolved || networkBusy || retryTap || Boolean(networkError)}
+                    disabled={roundOver || celebrating || networkBusy || retryTap || Boolean(networkError)}
                   >
                     <span className="pop-balloon-art">
                       <img src={`${base}games/pop-balloon.webp`} alt="" width="192" height="192" />
@@ -338,27 +329,27 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
                 <output aria-live="polite">{answer || "—"}</output>
               </div>
               <div className="pop-tools">
-                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundSolved || networkBusy || retryTap} onClick={requestHint}>
-                  <Lightbulb size={17} aria-hidden="true" /> Hint
+                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundOver || networkBusy || retryTap || hintLevel >= 3} onClick={requestHint}>
+                  <Lightbulb size={17} aria-hidden="true" /> {hintUsed ? "Next hint" : "Hint"}
                 </button>}
-                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryTap} onClick={() => { setPopped((previous) => previous.slice(0, -1)); setShowError(false); }}>
+                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundOver || networkBusy || retryTap} onClick={() => { setPopped((previous) => previous.slice(0, -1)); setShowError(false); }}>
                   <Undo2 size={17} aria-hidden="true" /> Undo
                 </button>
-                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryTap} onClick={() => { setPopped([]); setShowError(false); }}>
+                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundOver || networkBusy || retryTap} onClick={() => { setPopped([]); setShowError(false); }}>
                   <RotateCcw size={17} aria-hidden="true" /> Reset
                 </button>
               </div>
-              {roundSolved && !celebrating && (
+              {roundOver && !celebrating && (
                 <button ref={nextButton} type="button" className="pop-button pop-primary" onClick={advance}>
-                  {roundIndex === roundCount - 1 ? "See results" : "Next word"} <ArrowRight size={19} aria-hidden="true" />
+                  {nextLabel} <ArrowRight size={19} aria-hidden="true" />
                 </button>
               )}
               {retryTap && !networkBusy && <button type="button" className="pop-button pop-primary" onClick={() => submitTap()}>Retry pop <Check size={19} aria-hidden="true" /></button>}
               {networkError && !retryTap && <button type="button" className="pop-button pop-quiet" onClick={() => setNetworkError("")}>Dismiss</button>}
             </div>
-            <p className="pop-feedback" aria-live="polite" data-result={roundSolved ? "correct" : showError ? "retry" : undefined}>
-              {roundSolved ? (
-                <ArcadeCue tone="correct">Magaling! <strong>{roundResult?.root}</strong> is the root word.</ArcadeCue>
+            <p className="pop-feedback" aria-live="polite" data-result={roundWon ? "correct" : showError ? "retry" : undefined}>
+              {roundOver ? (
+                <ArcadeCue tone={roundWon ? "correct" : "retry"}><strong>{roundResult?.root}</strong> is the root word.</ArcadeCue>
               ) : showError ? (
                 <>
                   <ArcadeCue tone="retry">One heart lost. Keep that letter and try popping a different one.</ArcadeCue>
@@ -376,27 +367,20 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
         {screen === "results" && (
           <section className="pop-results" aria-labelledby="pop-results-title">
             <img src={`${base}pandiwasto-mascot.webp`} alt="" width="92" height="92" />
-            <h1 id="pop-results-title" tabIndex={-1} ref={(node) => { focusTarget.current = node; }}>{lives > 0 ? "Ang galing!" : "Out of hearts"}</h1>
-            {lives > 0 ? <p>You found all {roundCount} root words.</p> : (
-              <>
-                <ArcadeHearts lives={lives} total={STARTING_HEARTS} />
-                <p>You found {solvedCount} of {roundCount} root words.</p>
-                {lostRoot && <p>The last root word was <strong lang="fil">{lostRoot}</strong>.</p>}
-              </>
-            )}
+            <h1 id="pop-results-title" tabIndex={-1} ref={(node) => { focusTarget.current = node; }}>Ang galing!</h1>
+            <p>You found {solvedCount} of {roundCount} root words.</p>
             <div className="pop-result-stats">
               <div><span>Score</span><strong>{points}<small>/{maxPoints}</small></strong></div>
               <div><span>{testPlay ? "Test XP" : "XP earned"}</span><strong>+{earnedXp}</strong></div>
               <div><span>{newBest ? "New best!" : "Personal best"}</span><strong>{personalBest}</strong></div>
             </div>
-            <div className="pop-root-recap" aria-label="Root words found">{results.map((result, index) => <span key={index}>{result.root}</span>)}</div>
+            <div className="pop-root-recap" aria-label="Root words reviewed">{results.map((result, index) => <span key={index}>{result.root}</span>)}</div>
             <div className="pop-results-actions">
               <button type="button" className="pop-button pop-primary" disabled={networkBusy} onClick={start}>Play again <RotateCcw size={18} aria-hidden="true" /></button>
               <button type="button" className="pop-button pop-quiet" onClick={onExit}>Back to games</button>
             </div>
           </section>
         )}
-        {networkBusy && <p className="pop-feedback" role="status">Saving to your account…</p>}
         {networkError && !confirmExit && <p className="pop-feedback" role="alert" data-result="retry">{networkError}</p>}
       </div>
     </main>

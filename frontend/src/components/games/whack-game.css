@@ -94,6 +94,22 @@
 .whack-mole[data-state="correct"] { animation: whack-bounce .48s ease both; }
 .whack-mole[data-state="down"] { animation: whack-duck .2s ease both; }
 .whack-hit-spark { position: absolute; z-index: 2; top: 15%; right: 8%; width: clamp(20px, 3vw, 40px); height: auto; color: #946813; fill: #ffe890; animation: whack-spark .75s ease-out both; }
+.whack-hammer { position: absolute; z-index: 3; top: 4%; left: 52%; width: clamp(39px, 9vw, 82px); aspect-ratio: 1; color: #6e4984; pointer-events: none; }
+.whack-hammer > :first-child { width: 100%; height: 100%; fill: #f7c764; stroke-width: 1.7; filter: drop-shadow(0 3px 2px #503b3945); transform-origin: 74% 83%; animation: whack-swing var(--arcade-motion-ms, 580ms) ease-in-out both; }
+.whack-hammer > :last-child { position: absolute; inset: 38% auto auto -26%; width: 55%; height: auto; color: #a96c1f; fill: #ffe68d; animation: whack-impact var(--arcade-motion-ms, 580ms) ease-out both; }
+.whack-hammer[data-impact="miss"] > :last-child { color: #9a5846; fill: #ffab8e; }
+@keyframes whack-swing {
+  0% { transform: translate(17%, -25%) rotate(22deg); opacity: 0; }
+  28% { transform: translate(8%, -18%) rotate(33deg); opacity: 1; }
+  62% { transform: translate(-25%, 28%) rotate(-42deg); opacity: 1; }
+  100% { transform: translate(-15%, 16%) rotate(-23deg); opacity: 0; }
+}
+@keyframes whack-impact {
+  0%, 50% { opacity: 0; scale: .45; }
+  67% { opacity: 1; scale: 1.15; }
+  100% { opacity: 0; scale: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .whack-hammer svg { animation: none; } }
 @keyframes whack-rise { from { transform: translateY(35%) scale(.82); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes whack-duck { to { transform: translateY(42%) scale(.78); opacity: 0; } }
 @keyframes whack-bounce { 40% { transform: translateY(6px) scale(1.14,.82); } 70% { transform: translateY(-8px) scale(.96,1.06); } }

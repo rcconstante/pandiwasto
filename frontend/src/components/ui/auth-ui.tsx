@@ -3,7 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
 import { Dialog } from "radix-ui";
 import { authClient } from "@/lib/auth";
-import { randomAvatar } from "@/data/dashboardProfile";
+import { DEFAULT_AVATAR } from "@/data/dashboardProfile";
 
 const NICKNAME_STARTS = ["Happy", "Sunny", "Curious", "Bright", "Brave"];
 const NICKNAME_ENDS = ["Tarsier", "Tamaraw", "Maya", "Dolphin", "Explorer"];
@@ -54,7 +54,7 @@ export function SignInModal({ open, onOpenChange, returnFocus }: {
           ...credentials,
           options: {
             emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
-            data: { display_name: createNickname(), avatar: randomAvatar(), profile_visibility: "private" },
+            data: { display_name: createNickname(), avatar: DEFAULT_AVATAR, profile_visibility: "private" },
           },
         })
         : await authClient.signInWithPassword(credentials);

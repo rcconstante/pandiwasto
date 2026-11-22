@@ -8,17 +8,20 @@
 .arcade-hearts {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-height: 36px;
   padding: 4px 8px;
   border: 1px solid #e4bed0;
   border-radius: 999px;
   background: #fff9f4;
-  color: #aa5b79;
+  color: #9d355c;
 }
-.arcade-hearts svg { flex: 0 0 auto; width: clamp(16px, 4.8vw, 21px); height: auto; }
-.arcade-hearts [data-full="true"] { fill: #f29ab6; }
-.arcade-hearts [data-full="false"] { color: #b2859b; animation: arcade-heart-loss .36s ease-out; }
+.arcade-hearts svg { flex: 0 0 auto; width: clamp(19px, 5.8vw, 28px); height: auto; }
+.arcade-hearts [data-full="true"] { fill: #f56f9b; }
+.arcade-hearts [data-full="false"] { color: #9a6d84; animation: arcade-heart-loss .36s ease-out; }
+.arcade-round-dialog[data-tone="miss"] { border-color: #e3b58b; background: #fff6e8; }
+.arcade-miss-medal { display: grid; place-items: center; width: 60px; height: 60px; margin-inline: auto; border: 1px solid #e8ad9d; border-radius: 50%; background: #ffded5; color: #a14a42; }
+.arcade-answer { display: block; color: #28543a; font-size: clamp(22px, 6vw, 32px); }
 
 @keyframes arcade-pop { 0%, 100% { scale: 1; } 45% { scale: 1.08; } }
 @keyframes arcade-wiggle { 0%, 100% { translate: 0; } 25% { translate: -3px; } 68% { translate: 3px; } }
