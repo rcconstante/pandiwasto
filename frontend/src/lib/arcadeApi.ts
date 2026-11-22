@@ -16,12 +16,11 @@ export interface PopRun {
   hintAllowed?: boolean;
 }
 
-export interface PopAnswer extends PopRun {
-  correct: boolean;
-  root?: string;
-  points: number;
-  roundWord: string;
-}
+type PopTap = PopRun & (
+  { outcome: "continue" }
+  | { outcome: "miss"; root?: string }
+  | { outcome: "solved"; root: string; points: number }
+);
 
 export class ArcadeRequestError extends Error {
   readonly status: number;
@@ -60,8 +59,8 @@ export const loadMastery = (signal?: AbortSignal) =>
 export const loadAdminStatus = (signal?: AbortSignal) =>
   arcadeRequest<{ players: number; completedRuns: number; publishedScores: number }>("admin/status", undefined, signal);
 export const startPopRun = (requestId: string) => arcadeRequest<PopRun>("pop/start", { requestId });
-export const answerPopRun = (runId: string, answer: { answerId: string; expectedRound: number; response: string }) =>
-  arcadeRequest<PopAnswer>(`pop/${runId}/answer`, answer);
+export const tapPopRun = (runId: string, tap: { tapId: string; expectedRound: number; removed: number[] }) =>
+  arcadeRequest<PopTap>(`pop/${runId}/tap`, tap);
 export const hintPopRun = (runId: string, expectedRound: number) => arcadeRequest<{ text: string }>(`pop/${runId}/hint`, { expectedRound });
 export const endPopRun = (runId: string) => arcadeRequest(`pop/${runId}/end`, {});
 

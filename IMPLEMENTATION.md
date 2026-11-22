@@ -11,7 +11,7 @@
 ## Staging and verification
 
 1. Install Node.js 24 and Deno. Run `npm run install-all` from the repository root.
-2. Apply the six migrations in order to staging and deploy the `arcade` function there. Set the frontend Supabase URL and browser publishable key. Configure Supabase email sign-in and confirmation redirects. Store provider credentials in Edge Function secrets.
+2. Apply the migrations in order to staging and deploy the `arcade` function there. Set the frontend Supabase URL and browser publishable key. Configure Supabase email sign-in and confirmation redirects. Store provider credentials in Edge Function secrets.
 3. Run `deno test --config supabase/functions/arcade/deno.json supabase/functions/arcade`, `npm run lint --prefix frontend`, and `npm run build --prefix frontend`. Check `/functions/v1/arcade/health`, then sign in with two confirmed staging accounts. Play and retry a run, confirm cross-device XP and rankings, and verify that ordinary learners receive no admin access. Test authorized score hide and restore in Rankings.
 4. Assign an administrator by inserting the confirmed account’s user ID into `pandiwasto_private.arcade_admins` through an authorized database operator. Verify score lookup, setup of a disposable approved cohort, acceptance and withdrawal, separate assessment scoring, study unlocking, and an export that contains no account IDs or email addresses.
 5. Before enabling generated hints, supply `GEMINI_API_KEY` in the server environment. Run the provider and authored fallback acceptance checks with staging data. The Gemini adapter uses the [GenerateContent API](https://ai.google.dev/api/generate-content).

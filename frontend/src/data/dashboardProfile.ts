@@ -28,6 +28,7 @@ export interface ProfileDetails {
   lastName: string;
   gender: ProfileGender;
   avatar: AvatarId;
+  photoPath: string | null;
 }
 
 const LEGACY_AVATARS = new Map<string, AvatarId>([
@@ -63,11 +64,14 @@ function readName(value: unknown, max: number, fallback = "") {
 
 export function readProfile(user: User): ProfileDetails {
   const metadata = user.user_metadata;
+  const candidate = typeof metadata?.photo_path === "string" ? metadata.photo_path : "";
+  const [owner, filename, ...remainder] = candidate.split("/");
   return {
     displayName: readName(metadata?.display_name, 24),
     firstName: readName(metadata?.first_name, 40),
     lastName: readName(metadata?.last_name, 40),
     gender: readGender(metadata?.gender),
     avatar: readAvatar(metadata?.avatar) ?? defaultAvatar(user.id),
+    photoPath: owner === user.id && /^[a-f0-9-]{36}\.jpg$/.test(filename ?? "") && !remainder.length ? candidate : null,
   };
 }

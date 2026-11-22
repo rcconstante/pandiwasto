@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Download, Eye, EyeOff, Search } from "lucide-react";
 import { MINIGAMES } from "@/data/landingData";
+import { ArcadeSelect } from "@/components/ui/ArcadeSelect";
 import { arcadeRequest, loadAdminStatus } from "@/lib/arcadeApi";
 import "./dashboard-research.css";
 
@@ -190,7 +191,7 @@ export function DashboardAdmin({ summary }: { summary: AdminStatus }) {
         <section className="pwd-admin-panel" aria-labelledby="pwd-moderation-heading">
           <h3 id="pwd-moderation-heading">Moderate a leaderboard score</h3>
           <form className="pwd-study-form" onSubmit={lookupScore}>
-            <label>Game<select name="gameId">{MINIGAMES.map(({ id, gameName }) => <option key={id} value={id}>{gameName}</option>)}</select></label>
+            <ArcadeSelect label="Game" name="gameId" defaultValue={String(MINIGAMES[0].id)} options={MINIGAMES.map(({ id, gameName }) => ({ value: String(id), label: gameName }))} />
             <label>Player alias or account ID<input name="lookup" required maxLength={64} autoComplete="off" placeholder="Player 012345ABCD" /></label>
             <button className="pwd-save" disabled={busy}><Search size={16} aria-hidden="true" /> Find score</button>
           </form>
@@ -218,10 +219,10 @@ export function DashboardAdmin({ summary }: { summary: AdminStatus }) {
               <button className="pwd-save" disabled={busy}>Create cohort</button>
             </form>
           </details>
-          <label className="pwd-study-cohort-label">Manage a cohort<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setPage(0); }}>
-            <option value="">Choose a cohort</option>
-            {cohorts.map((entry) => <option value={entry.id} key={entry.id}>{entry.title}</option>)}
-          </select></label>
+          <div className="pwd-study-cohort-label">
+            <ArcadeSelect label="Manage a cohort" value={selectedId || "none"} onValueChange={(value) => { setSelectedId(value === "none" ? "" : value); setPage(0); }}
+              options={[{ value: "none", label: "Choose a cohort" }, ...cohorts.map((entry) => ({ value: entry.id, label: entry.title }))]} />
+          </div>
           {cohort && (
             <>
               <p>{cohort.preCount} pre-assessment items · {cohort.postCount} post-assessment items · {cohort.participants} invited</p>
@@ -229,11 +230,11 @@ export function DashboardAdmin({ summary }: { summary: AdminStatus }) {
                 <details>
                   <summary>Add reviewed assessment items</summary>
                   <form className="pwd-study-form" onSubmit={addQuestion}>
-                    <label>Form<select name="phase"><option value="pre">Pre-assessment</option><option value="post">Post-assessment</option></select></label>
-                    <label>Skill<select name="skill">{SKILLS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+                    <ArcadeSelect label="Form" name="phase" defaultValue="pre" options={[{ value: "pre", label: "Pre-assessment" }, { value: "post", label: "Post-assessment" }]} />
+                    <ArcadeSelect label="Skill" name="skill" defaultValue={SKILLS[0][0]} options={SKILLS.map(([value, label]) => ({ value, label }))} />
                     <label>Question<textarea name="prompt" required maxLength={300} rows={2} /></label>
                     {[1, 2, 3].map((index) => <label key={index}>Choice {index}<input name={"choice" + index} required maxLength={120} /></label>)}
-                    <label>Correct choice<select name="answer"><option value="0">Choice 1</option><option value="1">Choice 2</option><option value="2">Choice 3</option></select></label>
+                    <ArcadeSelect label="Correct choice" name="answer" defaultValue="0" options={[0, 1, 2].map((index) => ({ value: String(index), label: `Choice ${index + 1}` }))} />
                     <button className="pwd-save" disabled={busy}>Add question</button>
                   </form>
                 </details>
@@ -242,7 +243,7 @@ export function DashboardAdmin({ summary }: { summary: AdminStatus }) {
                 <summary>Invite a participant</summary>
                 <form className="pwd-study-form" onSubmit={invite}>
                   <label>Player alias or account ID<input name="participant" required maxLength={64} autoComplete="off" /></label>
-                  <label>External consent verified<select name="consent"><option value="guardian">Parent or guardian</option><option value="adult">Adult participant</option></select></label>
+                  <ArcadeSelect label="External consent verified" name="consent" defaultValue="guardian" options={[{ value: "guardian", label: "Parent or guardian" }, { value: "adult", label: "Adult participant" }]} />
                   <label className="pwd-study-confirm"><input type="checkbox" name="verified" required /> I verified this consent outside the app.</label>
                   <button className="pwd-save" disabled={busy}>Invite player</button>
                 </form>
@@ -250,9 +251,8 @@ export function DashboardAdmin({ summary }: { summary: AdminStatus }) {
               <details>
                 <summary>Export pseudonymized study data</summary>
                 <div className="pwd-study-form">
-                  <label>Dataset<select value={dataset} onChange={(event) => { setDataset(event.target.value === "attempt" ? "attempt" : "assessment"); setPage(0); }}>
-                    <option value="assessment">Assessment results</option><option value="attempt">Game attempts</option>
-                  </select></label>
+                  <ArcadeSelect label="Dataset" value={dataset} onValueChange={(value) => { setDataset(value === "attempt" ? "attempt" : "assessment"); setPage(0); }}
+                    options={[{ value: "assessment", label: "Assessment results" }, { value: "attempt", label: "Game attempts" }]} />
                   <label>Page<input type="number" value={page + 1} min={1} max={10001} onChange={(event) => setPage(Math.max(0, Number(event.target.value) - 1))} /></label>
                   <button type="button" className="pwd-save" disabled={busy} onClick={exportPage}><Download size={16} aria-hidden="true" /> Download JSON</button>
                 </div>

@@ -43,7 +43,7 @@ Players start at Level 1. Every 100 XP raises the player one level.
 
 | Game | Unlock | Lesson and controls | Scoring and XP |
 | --- | ---: | --- | --- |
-| Pop Goes the Word | 1 | **Salitang-Ugat**. Pop extra letters, then check the root word. Tap a popped spot to restore its balloon. | Five rounds with three hearts per run. Each wrong check costs a heart. Solved rounds earn up to 100 points and 20 XP each. Running out of hearts saves the points and XP already earned. |
+| Pop Goes the Word | 1 | **Salitang-Ugat**. Pop the extra letters. The game checks each pop and shows the root word when you solve it. | Five words with three hearts per run. Popping a needed letter immediately costs a heart. Each solution earns up to 100 points and 20 XP. Running out of hearts saves the points and XP already earned. |
 | Whack-a-Word | 3 | **Kayarian ng Salita**. Pick Payak, Maylapi, Tambalan, or Inuulit before the mole ducks. The 1–4 keys also select a type. | Three lives. Each correct answer earns 100 points and 10 XP. A miss or timeout costs one life. Untimed practice earns XP. Only timed runs save a best score. |
 | Toss-a-Lapi | 5 | **Mga Panlapi**. Tap or drag an affix tile into each sentence. | Five rounds, up to 500 points, and 100 XP on completion. |
 | Memory Match | 7 | **Tambalan**. Flip cards in pairs to combine root words. Each board ends with a review of the compounds and their meanings. | Three boards with 6, 8, and 10 cards. Up to 1,200 points and 100 XP on completion. |
@@ -55,7 +55,7 @@ The arcade has animated score updates, visual success and retry cues, and a soun
 
 ## Account play and database setup
 
-1. Apply all six [migrations](supabase/migrations) in filename order to a staging Supabase project, then verify the staging rollout before applying them to production.
+1. Apply the [migrations](supabase/migrations) in filename order to a staging Supabase project, then verify the staging rollout before applying them to production. Apply the profile photo and balloon tap migrations before deploying the updated Edge Function and frontend.
 2. Deploy the `arcade` Edge Function to the same Supabase project. The function uses Supabase’s built-in project URL and server key.
 3. Copy `frontend/.env.local.example` to `frontend/.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` using that project’s browser publishable key. Enable email sign-in and allow the local or deployed frontend URL in Supabase Auth.
 

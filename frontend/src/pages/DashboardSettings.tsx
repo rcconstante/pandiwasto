@@ -4,8 +4,9 @@ import { authClient } from "@/lib/auth";
 import type { ProfileDetails } from "@/data/dashboardProfile";
 import { DashboardProfileEditor } from "./DashboardProfileEditor";
 
-export function DashboardSettings({ profile, onSaveProfile, user, onLeave, leaving }: {
+export function DashboardSettings({ profile, photoUrl, onSaveProfile, user, onLeave, leaving }: {
   profile: ProfileDetails;
+  photoUrl?: string;
   onSaveProfile: (profile: ProfileDetails) => void;
   user: User;
   onLeave: () => void;
@@ -46,25 +47,25 @@ export function DashboardSettings({ profile, onSaveProfile, user, onLeave, leavi
     <>
       <h2>Settings</h2>
       <div className="pwd-settings">
-        <DashboardProfileEditor profile={profile} onSave={onSaveProfile} />
+        <DashboardProfileEditor profile={profile} photoUrl={photoUrl} userId={user.id} onSave={onSaveProfile} />
         <section aria-labelledby="pwd-account-heading">
           <h3 id="pwd-account-heading">Account &amp; password</h3>
           <p>Signed in as <strong>{user.email}</strong></p>
-          <details>
-            <summary>Change email</summary>
+          <div className="pwd-account-form">
+            <h4>Change email</h4>
             <form onSubmit={(event) => saveCredentials(event, "email")}>
               <label>New email <input name="value" type="email" autoComplete="email" required /></label>
               <button className="pwd-save" type="submit" disabled={pending}>Save email</button>
             </form>
-          </details>
-          <details>
-            <summary>Change password</summary>
+          </div>
+          <div className="pwd-account-form">
+            <h4>Change password</h4>
             <form onSubmit={(event) => saveCredentials(event, "password")}>
               <label>Current password <input name="current" type="password" autoComplete="current-password" required /></label>
               <label>New password <input name="value" type="password" autoComplete="new-password" minLength={8} required /></label>
               <button className="pwd-save" type="submit" disabled={pending}>Save password</button>
             </form>
-          </details>
+          </div>
           <button type="button" className="pwd-save pwd-account-leave" disabled={leaving} onClick={onLeave}>
             Sign out
           </button>

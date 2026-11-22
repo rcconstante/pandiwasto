@@ -1,17 +1,19 @@
-import { ArrowRight, Sparkles, Star } from "lucide-react";
+import { Sparkles, Star } from "lucide-react";
+import { XP_PER_LEVEL } from "@/data/arcadeProgress";
 import { avatarSrc, type ProfileDetails } from "@/data/dashboardProfile";
 
-export function DashboardProfile({ profile, level, xp, onEdit }: {
+export function DashboardProfile({ profile, photoUrl, level, xp }: {
   profile: ProfileDetails;
+  photoUrl?: string;
   level: number | null;
   xp: number | null;
-  onEdit: () => void;
 }) {
+  const levelXp = xp === null ? 0 : xp % XP_PER_LEVEL;
   return (
     <>
       <h2>Your profile</h2>
       <div className="pwd-profile-card">
-        <img src={avatarSrc(profile.avatar)} alt="" width="116" height="116" />
+        <img className={photoUrl ? "pwd-player-photo" : undefined} src={photoUrl ?? avatarSrc(profile.avatar)} alt="" width="116" height="116" />
         <div>
           <h3>{profile.displayName || "Player"}</h3>
           <div className="pwd-profile-progress" aria-label="Player progress">
@@ -22,9 +24,15 @@ export function DashboardProfile({ profile, level, xp, onEdit }: {
               </>
             ) : <p>Account progress is unavailable.</p>}
           </div>
+          {level !== null && xp !== null && (
+            <div className="pwd-xp-meter">
+              <p>{XP_PER_LEVEL - levelXp} XP to Level {level + 1}</p>
+              <progress aria-label="XP toward the next level" value={levelXp} max={XP_PER_LEVEL} />
+              <small>{levelXp} / {XP_PER_LEVEL} XP</small>
+            </div>
+          )}
         </div>
       </div>
-      <button type="button" className="pwd-text-action pwd-profile-edit" onClick={onEdit}>Edit in Settings <ArrowRight size={16} aria-hidden="true" /></button>
     </>
   );
 }

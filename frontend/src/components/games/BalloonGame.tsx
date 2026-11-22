@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, CircleHelp, Lightbulb, RotateCcw, Star, Undo2, Volume2, VolumeX } from "lucide-react";
 import { Dialog } from "radix-ui";
-import { AFFIX_HINTS, buildBalloonRun, MAX_ROUND_SCORE, XP_PER_ROUND } from "@/data/balloonGame";
-import { answerPopRun, endPopRun, hintPopRun, startPopRun, type PopRun } from "@/lib/arcadeApi";
+import { MAX_ROUND_SCORE, XP_PER_ROUND } from "@/data/balloonGame";
+import { ArcadeRequestError, endPopRun, hintPopRun, startPopRun, tapPopRun, type PopRun } from "@/lib/arcadeApi";
 import { ArcadeCue, ArcadeHearts, ArcadeScore } from "./ArcadeFeedback";
 import { useArcadeSound } from "./useArcadeSound";
 import "./balloon-game.css";
@@ -16,21 +16,19 @@ const COLORS = ["grape", "coral", "aqua", "gold"];
 const CELEBRATION_SPARKS = Array.from({ length: 12 }, (_, index) => index);
 const STARTING_HEARTS = 3;
 
-export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = false }: {
+export function BalloonGame({ personalBest, onComplete, onExit }: {
   personalBest: number;
   onComplete: (score: number, xp: number) => void;
   onExit: () => void;
-  accountPlay?: boolean;
 }) {
   const [screen, setScreen] = useState<"intro" | "round" | "results">("intro");
-  const [words, setWords] = useState(() => buildBalloonRun(personalBest === 0));
   const [roundIndex, setRoundIndex] = useState(0);
   const [popped, setPopped] = useState<number[]>([]);
   const [hintUsed, setHintUsed] = useState(false);
-  const [missed, setMissed] = useState(false);
   const [showError, setShowError] = useState(false);
   const [lives, setLives] = useState(STARTING_HEARTS);
   const [results, setResults] = useState<RoundResult[]>([]);
+  const [lostRoot, setLostRoot] = useState("");
   const [newBest, setNewBest] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
@@ -40,28 +38,27 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
   const [serverResult, setServerResult] = useState<RoundResult | null>(null);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [networkError, setNetworkError] = useState("");
-  const [retryAnswer, setRetryAnswer] = useState(false);
+  const [retryTap, setRetryTap] = useState(false);
   const requestPending = useRef(false);
   const startRequest = useRef<string | null>(null);
-  const answerRequest = useRef<string | null>(null);
+  const pendingTap = useRef<{ tapId: string; expectedRound: number; removed: number[] } | null>(null);
   const automaticHint = useRef<string | null>(null);
   const { muted, play: sound, toggleSound } = useArcadeSound();
   const focusTarget = useRef<HTMLElement | null>(null);
   const backButton = useRef<HTMLButtonElement | null>(null);
   const nextButton = useRef<HTMLButtonElement | null>(null);
 
-  const puzzle = words[roundIndex];
-  const word = accountPlay ? wordFromServer : puzzle.word;
-  const roundCount = run?.totalRounds ?? words.length;
+  const word = wordFromServer;
+  const roundCount = run?.totalRounds ?? 5;
   const letters = [...word];
   const answer = letters.filter((_, index) => !popped.includes(index)).join("");
-  const roundResult = accountPlay ? serverResult : results[roundIndex];
+  const roundResult = serverResult;
   const roundSolved = Boolean(roundResult);
   const points = run?.score ?? results.reduce((total, result) => total + result.score, 0);
   const maxPoints = roundCount * MAX_ROUND_SCORE;
   const earnedXp = run?.xp ?? results.length * XP_PER_ROUND;
   const solvedCount = earnedXp / XP_PER_ROUND;
-  const hint = accountPlay ? hintFromServer : AFFIX_HINTS[puzzle.affix];
+  const hint = hintFromServer;
   const base = import.meta.env.BASE_URL;
 
   useEffect(() => {
@@ -73,35 +70,14 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
     if (roundSolved && !celebrating && screen === "round") nextButton.current?.focus({ preventScroll: true });
   }, [celebrating, roundSolved, screen]);
 
-  const showStudyHint = useEffectEvent(() => requestHint());
-  useEffect(() => {
-    if (!accountPlay || !showError || screen !== "round" || run?.status !== "active" || !run.studyActive || !run.hintAllowed || hintUsed || networkBusy || retryAnswer || confirmExit) return;
-    const key = run.runId + ":" + roundIndex + ":" + run.hearts;
-    if (automaticHint.current === key) return;
-    const timer = window.setTimeout(() => {
-      automaticHint.current = key;
-      showStudyHint();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [accountPlay, showError, screen, run, hintUsed, networkBusy, retryAnswer, confirmExit, roundIndex]);
-
   function resetRound() {
     setPopped([]);
     setHintUsed(false);
-    setMissed(false);
     setShowError(false);
     setServerResult(null);
     setHintFromServer("");
-    setRetryAnswer(false);
-  }
-
-  function toggleLetter(index: number) {
-    if (roundSolved || networkBusy || retryAnswer) return;
-    if (!popped.includes(index)) sound("pop");
-    setPopped((previous) => previous.includes(index)
-      ? previous.filter((pressed) => pressed !== index)
-      : [...previous, index]);
-    setShowError(false);
+    pendingTap.current = null;
+    setRetryTap(false);
   }
 
   function finishRun(finalScore: number, xp: number) {
@@ -117,7 +93,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
     try {
       await action();
     } catch (error) {
-      setNetworkError(error instanceof Error && error.name === "Error" ? error.message : "The connection timed out. Try again.");
+      setNetworkError(error instanceof Error ? error.message : "The connection timed out. Try again.");
     } finally {
       requestPending.current = false;
       setNetworkBusy(false);
@@ -126,10 +102,6 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
 
   function start() {
     sound();
-    if (!accountPlay) {
-      setScreen("round");
-      return;
-    }
     void withServer(async () => {
       startRequest.current ??= crypto.randomUUID();
       const snapshot = await startPopRun(startRequest.current);
@@ -140,6 +112,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
       setLives(snapshot.hearts);
       setWordFromServer(snapshot.word ?? "");
       setResults([]);
+      setLostRoot("");
       setNewBest(false);
       if (snapshot.status === "active" && snapshot.word) {
         setHintUsed(Boolean(snapshot.hintUsed));
@@ -153,71 +126,80 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
   }
 
   function requestHint() {
-    if (!accountPlay) {
-      setHintUsed(true);
-    } else if (run) {
-      void withServer(async () => {
-        const data = await hintPopRun(run.runId, roundIndex);
-        setHintFromServer(data.text);
-        setHintUsed(true);
-      });
-    }
-  }
-
-  function submitOnlineAnswer() {
     if (!run) return;
     void withServer(async () => {
-      setRetryAnswer(true);
-      answerRequest.current ??= crypto.randomUUID();
-      const result = await answerPopRun(run.runId, { answerId: answerRequest.current, expectedRound: roundIndex, response: answer });
-      answerRequest.current = null;
-      setRetryAnswer(false);
-      setRun(result);
-      setLives(result.hearts);
-      if (result.correct && result.root) {
-        const solved = { root: result.root, score: result.points };
-        setServerResult(solved);
-        setResults((previous) => [...previous, solved]);
-        setCelebrating(true);
-        sound("correct");
-      } else {
-        setShowError(true);
-        sound("miss");
-      }
-      if (result.status === "completed") {
-        finishRun(result.score, result.xp);
-        if (!result.correct) setScreen("results");
-      }
+      const data = await hintPopRun(run.runId, roundIndex);
+      setHintFromServer(data.text);
+      setHintUsed(true);
     });
   }
 
-  function checkWord() {
-    if (roundSolved || !popped.length || showError || lives === 0 || networkBusy) return;
-    if (accountPlay) {
-      submitOnlineAnswer();
-      return;
-    }
-    if (answer !== puzzle.root) {
-      const remaining = lives - 1;
-      setLives(remaining);
-      setMissed(true);
-      setShowError(true);
-      sound("miss");
-      if (remaining === 0) {
-        finishRun(points, earnedXp);
-        setScreen("results");
-      }
-      return;
-    }
-    const score = MAX_ROUND_SCORE - (hintUsed ? 25 : 0) - (missed ? 25 : 0);
-    const next = [...results, { root: puzzle.root, score }];
-    setResults(next);
-    setCelebrating(true);
-    sound("correct");
+  const showStudyHint = useEffectEvent(() => requestHint());
+  useEffect(() => {
+    if (!showError || screen !== "round" || run?.status !== "active" || !run.studyActive || !run.hintAllowed || hintUsed || networkBusy || retryTap || confirmExit) return;
+    const key = run.runId + ":" + roundIndex + ":" + run.hearts;
+    if (automaticHint.current === key) return;
+    const timer = window.setTimeout(() => {
+      automaticHint.current = key;
+      showStudyHint();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [showError, screen, run, hintUsed, networkBusy, retryTap, confirmExit, roundIndex]);
 
-    if (next.length === words.length) {
-      finishRun(points + score, next.length * XP_PER_ROUND);
+  function popLetter(index: number) {
+    if (roundSolved || requestPending.current || retryTap || networkError) return;
+    if (popped.includes(index)) {
+      setPopped((previous) => previous.filter((position) => position !== index));
+      setShowError(false);
+      return;
     }
+    submitTap([...popped, index]);
+  }
+
+  function submitTap(removed?: number[]) {
+    if (!run) return;
+    void withServer(async () => {
+      if (removed) pendingTap.current = { tapId: crypto.randomUUID(), expectedRound: roundIndex, removed };
+      const next = pendingTap.current;
+      if (!next) return;
+      setRetryTap(true);
+      let result;
+      try {
+        result = await tapPopRun(run.runId, next);
+      } catch (error) {
+        if (error instanceof ArcadeRequestError && error.status === 409) {
+          resetRound();
+          setScreen("intro");
+        }
+        throw error;
+      }
+      pendingTap.current = null;
+      setRetryTap(false);
+      setRun(result);
+      setLives(result.hearts);
+      setShowError(result.outcome === "miss");
+      if (result.outcome === "miss") {
+        sound("miss");
+        if (result.status === "completed") {
+          setLostRoot(result.root ?? "");
+          finishRun(result.score, result.xp);
+          setScreen("results");
+        }
+        return;
+      }
+
+      setPopped(next.removed);
+      if (result.outcome === "continue") {
+        sound("pop");
+        return;
+      }
+      const solved = { root: result.root, score: result.points };
+      setServerResult(solved);
+      setResults((previous) => [...previous, solved]);
+      setCelebrating(true);
+      sound("correct");
+      if (result.status === "completed") finishRun(result.score, result.xp);
+    });
   }
 
   function advance() {
@@ -231,22 +213,8 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
     }
   }
 
-  function replay() {
-    if (accountPlay) {
-      start();
-      return;
-    }
-    setWords(buildBalloonRun(false));
-    setRoundIndex(0);
-    setResults([]);
-    setLives(STARTING_HEARTS);
-    setNewBest(false);
-    resetRound();
-    setScreen("round");
-  }
-
   function leaveRun() {
-    if (run?.status === "active" && !retryAnswer && !networkError) {
+    if (run?.status === "active" && !retryTap && !networkError) {
       void withServer(async () => {
         await endPopRun(run.runId);
         onExit();
@@ -274,7 +242,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
             <Dialog.Overlay className="pw-modal-overlay" />
             <Dialog.Content className="pw-modal pop-exit" onCloseAutoFocus={(event) => { event.preventDefault(); backButton.current?.focus(); }}>
               <Dialog.Title>Leave this game?</Dialog.Title>
-              <Dialog.Description>{accountPlay && (networkError || retryAnswer) ? "You can return to Games and reopen this run." : "Leave before finishing to end this run without rewards."}</Dialog.Description>
+              <Dialog.Description>{(networkError || retryTap) ? "You can return to Games and reopen this run." : "Leave before finishing to end this run without rewards."}</Dialog.Description>
               {networkError && <p className="pop-feedback" role="alert">{networkError}</p>}
               <div className="pop-exit-actions">
                 <Dialog.Close asChild><button type="button" className="pop-button pop-primary">Keep playing</button></Dialog.Close>
@@ -302,7 +270,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
               </div>
               <span className="pop-celebration-score"><Star size={17} aria-hidden="true" /> +{roundResult?.score} points</span>
               <button type="button" className="pop-button pop-primary" onClick={advance}>
-                {roundIndex === roundCount - 1 ? "See results" : "Next round"} <ArrowRight size={19} aria-hidden="true" />
+                {roundIndex === roundCount - 1 ? "See results" : "Next word"} <ArrowRight size={19} aria-hidden="true" />
               </button>
             </Dialog.Content>
           </Dialog.Portal>
@@ -313,7 +281,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
             <div>
               <p className="pop-skill">Salitang-Ugat</p>
               <h1 id="pop-title" ref={(node) => { focusTarget.current = node; }} tabIndex={-1}>Pop Goes<br />the Word!</h1>
-              <p className="pop-intro-copy">Pop the extra letters to keep the root word. Each wrong answer costs one of your three hearts.</p>
+              <p className="pop-intro-copy">Pop the extra letters to keep the root word. Popping a letter needed for the root costs one of your three hearts.</p>
               <div className="pop-example" aria-label="Example: sumakay becomes sakay">
                 <span>S<span className="pop-strike">UM</span>AKAY</span><ArrowRight size={19} aria-hidden="true" /><strong>SAKAY</strong>
               </div>
@@ -350,8 +318,8 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
                     data-color={COLORS[(index + roundIndex) % COLORS.length]}
                     aria-label={`${popped.includes(index) ? "Restore" : "Pop"} ${letter}, letter ${index + 1}`}
                     aria-pressed={popped.includes(index)}
-                    onClick={() => toggleLetter(index)}
-                    disabled={roundSolved || networkBusy || retryAnswer}
+                    onClick={() => popLetter(index)}
+                    disabled={roundSolved || networkBusy || retryTap || Boolean(networkError)}
                   >
                     <span className="pop-balloon-art">
                       <img src={`${base}games/pop-balloon.webp`} alt="" width="192" height="192" />
@@ -368,38 +336,36 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
                 <output aria-live="polite">{answer || "—"}</output>
               </div>
               <div className="pop-tools">
-                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundSolved || networkBusy || retryAnswer} onClick={requestHint}>
+                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundSolved || networkBusy || retryTap} onClick={requestHint}>
                   <Lightbulb size={17} aria-hidden="true" /> Hint
                 </button>}
-                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryAnswer} onClick={() => { setPopped((previous) => previous.slice(0, -1)); setShowError(false); }}>
+                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryTap} onClick={() => { setPopped((previous) => previous.slice(0, -1)); setShowError(false); }}>
                   <Undo2 size={17} aria-hidden="true" /> Undo
                 </button>
-                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryAnswer} onClick={() => { setPopped([]); setShowError(false); }}>
+                <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundSolved || networkBusy || retryTap} onClick={() => { setPopped([]); setShowError(false); }}>
                   <RotateCcw size={17} aria-hidden="true" /> Reset
                 </button>
               </div>
-              {roundSolved && !celebrating ? (
+              {roundSolved && !celebrating && (
                 <button ref={nextButton} type="button" className="pop-button pop-primary" onClick={advance}>
-                  {roundIndex === roundCount - 1 ? "See results" : "Next round"} <ArrowRight size={19} aria-hidden="true" />
-                </button>
-              ) : (
-                <button type="button" className="pop-button pop-primary" disabled={roundSolved || !popped.length || showError || networkBusy} onClick={checkWord}>
-                  {retryAnswer && !networkBusy ? "Retry check" : "Check word"} <Check size={19} aria-hidden="true" />
+                  {roundIndex === roundCount - 1 ? "See results" : "Next word"} <ArrowRight size={19} aria-hidden="true" />
                 </button>
               )}
+              {retryTap && !networkBusy && <button type="button" className="pop-button pop-primary" onClick={() => submitTap()}>Retry pop <Check size={19} aria-hidden="true" /></button>}
+              {networkError && !retryTap && <button type="button" className="pop-button pop-quiet" onClick={() => setNetworkError("")}>Dismiss</button>}
             </div>
             <p className="pop-feedback" aria-live="polite" data-result={roundSolved ? "correct" : showError ? "retry" : undefined}>
               {roundSolved ? (
                 <ArcadeCue tone="correct">Magaling! <strong>{roundResult?.root}</strong> is the root word.</ArcadeCue>
               ) : showError ? (
                 <>
-                  <ArcadeCue tone="retry">One heart lost. Tap a popped balloon to bring it back and try again.</ArcadeCue>
+                  <ArcadeCue tone="retry">One heart lost. Keep that letter and try popping a different one.</ArcadeCue>
                   {hintUsed && hint && <span lang="fil">{hint}</span>}
                 </>
               ) : hintUsed && hint ? (
                 <><Lightbulb size={18} aria-hidden="true" /> <span lang="fil">{hint}</span></>
               ) : (
-                <><CircleHelp size={18} aria-hidden="true" /> Tap a balloon to pop it. Tap it again to bring it back.</>
+                <><CircleHelp size={18} aria-hidden="true" /> Pop an added letter. The game checks each pop.</>
               )}
             </p>
           </>
@@ -412,7 +378,8 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
             {lives > 0 ? <p>You found all {roundCount} root words.</p> : (
               <>
                 <ArcadeHearts lives={lives} total={STARTING_HEARTS} />
-                <p>You found {solvedCount} of {roundCount} root words. Ready to try again?</p>
+                <p>You found {solvedCount} of {roundCount} root words.</p>
+                {lostRoot && <p>The last root word was <strong lang="fil">{lostRoot}</strong>.</p>}
               </>
             )}
             <div className="pop-result-stats">
@@ -422,7 +389,7 @@ export function BalloonGame({ personalBest, onComplete, onExit, accountPlay = fa
             </div>
             <div className="pop-root-recap" aria-label="Root words found">{results.map((result, index) => <span key={index}>{result.root}</span>)}</div>
             <div className="pop-results-actions">
-              <button type="button" className="pop-button pop-primary" disabled={networkBusy} onClick={replay}>Play again <RotateCcw size={18} aria-hidden="true" /></button>
+              <button type="button" className="pop-button pop-primary" disabled={networkBusy} onClick={start}>Play again <RotateCcw size={18} aria-hidden="true" /></button>
               <button type="button" className="pop-button pop-quiet" onClick={onExit}>Back to games</button>
             </div>
           </section>

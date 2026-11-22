@@ -134,6 +134,26 @@ Deno.test("Answer retry IDs reach storage and stale or unowned runs do not expos
   assert.equal((await fetch(`/arcade/pop/${player}/answer`, post(body))).status, 404);
 });
 
+Deno.test("Balloon taps use the authenticated run and keep the root private after a nonterminal miss", async () => {
+  const fetch = requestFor({ supabase: {
+    auth: { getUser: async () => authUser() },
+    rpc: async (name, args) => {
+      assert.equal(name, "pandiwasto_pop_tap");
+      assert.deepEqual(args, { account_id: player, active_run: run, tap_id: attempt, expected_round: 0, removed: [0] });
+      return { data: { ...snapshot, outcome: "miss", correct: false, hearts: 2, root: "SAKAY", points: 0, roundWord: "SUMAKAY" } };
+    },
+  } });
+  const path = `/arcade/pop/${run}/tap`;
+  const payload = { tapId: attempt, expectedRound: 0, removed: [0] };
+  assert.equal((await fetch(path, post({ ...payload, removed: [12] }))).status, 400);
+  const response = await fetch(path, post(payload));
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.outcome, "miss");
+  assert.equal(result.hearts, 2);
+  assert.equal("root" in result, false);
+});
+
 Deno.test("Hints default to the authored rule and guard direct answers from a future provider", async () => {
   const rule = "Tingnan kung aling mga titik ang idinagdag sa loob.";
   const item = { text: rule, word: "SUMAKAY", root: "SAKAY" };

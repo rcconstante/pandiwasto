@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowRight, ChevronDown, ClipboardCheck, Lock, LogOut, Play, Settings, ShieldCheck, Star, Trophy, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Lock, LogOut, Play, Settings, ShieldCheck, Star, Trophy, UserRound } from "lucide-react";
 import { DropdownMenu, Tabs } from "radix-ui";
 import { authClient } from "@/lib/auth";
 import { ArcadeRequestError, getStudyState, loadAccountProgress, loadAdminStatus, loadMastery } from "@/lib/arcadeApi";
@@ -10,6 +10,7 @@ import { BALLOON_GAME_ID } from "@/data/balloonGame";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
 import { MINIGAMES } from "@/data/landingData";
 import { avatarSrc, type ProfileDetails, readProfile } from "@/data/dashboardProfile";
+import { readPlayerPhoto } from "@/lib/playerPhoto";
 import { DashboardProfile } from "./DashboardProfile";
 import { DashboardAdmin } from "./DashboardAdmin";
 import { DashboardStudy, type StudyStage } from "./DashboardStudy";
@@ -52,6 +53,7 @@ export function Dashboard({ user, onHome }: {
   const [admin, setAdmin] = useState<Awaited<ReturnType<typeof loadAdminStatus>> | null>(null);
   const [studyState, setStudyState] = useState<StudyStage>("unavailable");
   const [profile, setProfile] = useState<ProfileDetails>(() => readProfile(user));
+  const [photo, setPhoto] = useState<{ path: string; url: string }>();
   const [exitError, setExitError] = useState("");
   const [leaving, setLeaving] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
@@ -72,11 +74,26 @@ export function Dashboard({ user, onHome }: {
   const firstName = profile.firstName || playerName.split(/\s+/)[0];
   const locked = level !== null && !studyPractice && currentGame.unlockLevel > level;
   const personalBest = accountProgress?.bestScores[currentGame.id] ?? 0;
+  const photoUrl = photo?.path === profile.photoPath ? photo.url : undefined;
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     if (!gameOpen) title.current?.focus({ preventScroll: true });
   }, [gameOpen]);
+
+  useEffect(() => {
+    const path = profile.photoPath;
+    if (!path) return;
+    let active = true;
+    async function refreshPhoto() {
+      if (!path) return;
+      const url = await readPlayerPhoto(path);
+      if (active) setPhoto({ path, url });
+    }
+    void refreshPhoto().catch(() => {});
+    const timer = window.setInterval(() => void refreshPhoto().catch(() => {}), 50 * 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [profile.photoPath]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -160,7 +177,7 @@ export function Dashboard({ user, onHome }: {
 
   if (gameOpen) {
     if (currentGame.id === BALLOON_GAME_ID) {
-      return <BalloonGame accountPlay personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />;
+      return <BalloonGame personalBest={personalBest} onComplete={() => setRefresh((count) => count + 1)} onExit={() => setGameOpen(false)} />;
     }
     return (
       <Suspense fallback={<main className="pw-dashboard"><p className="pwd-content" role="status">Opening the game…</p></main>}>
@@ -181,7 +198,7 @@ export function Dashboard({ user, onHome }: {
             {accountProgress && <span className="pwd-level"><Star size={17} aria-hidden="true" /> Level {level} <span>· {accountProgress.xp} XP</span></span>}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger className="pwd-header-profile" aria-label={`Player menu for ${firstName}`}>
-                <img src={avatarSrc(profile.avatar)} alt="" width="32" height="32" />
+                <img className={photoUrl ? "pwd-player-photo" : undefined} src={photoUrl ?? avatarSrc(profile.avatar)} alt="" width="32" height="32" />
                 <span>{firstName}</span>
                 <ChevronDown size={14} aria-hidden="true" />
               </DropdownMenu.Trigger>
@@ -217,12 +234,8 @@ export function Dashboard({ user, onHome }: {
           <Tabs.List className="pwd-tabs" aria-label="Dashboard pages">
             {tabs.map(({ id, label }) => (
               <Tabs.Trigger key={id} value={id} className="pwd-tab" ref={id === "games" ? gamesTab : id === "rankings" ? rankingsTab : id === "profile" ? profileTab : id === "settings" ? settingsTab : undefined}>
-                {id === "rankings"
-                  ? <Trophy className="pwd-tab-trophy" aria-hidden="true" />
-                  : id === "profile" ? <UserRound className="pwd-tab-profile" aria-hidden="true" />
-                    : id === "admin" ? <ShieldCheck className="pwd-tab-profile" aria-hidden="true" />
-                      : id === "study" ? <ClipboardCheck className="pwd-tab-profile" aria-hidden="true" />
-                        : <img src={`${base}dashboard/${id}.webp`} alt="" width="44" height="44" />}
+                {id === "admin" ? <ShieldCheck className="pwd-tab-profile" aria-hidden="true" />
+                  : <img src={`${base}dashboard/${id}.webp`} alt="" width="44" height="44" />}
                 {label}
               </Tabs.Trigger>
             ))}
@@ -314,15 +327,13 @@ export function Dashboard({ user, onHome }: {
           </Tabs.Content>
 
           <Tabs.Content value="profile" className="pwd-panel">
-            <DashboardProfile profile={profile} level={level} xp={accountProgress?.xp ?? null} onEdit={() => {
-              setTab("settings");
-              requestAnimationFrame(() => settingsTab.current?.focus());
-            }} />
+            <DashboardProfile profile={profile} photoUrl={photoUrl} level={level} xp={accountProgress?.xp ?? null} />
           </Tabs.Content>
 
           <Tabs.Content value="settings" className="pwd-panel">
             <DashboardSettings
               profile={profile}
+              photoUrl={photoUrl}
               onSaveProfile={setProfile}
               user={user}
               onLeave={exit}

@@ -4,6 +4,7 @@ import { Dialog } from "radix-ui";
 import { supabaseClient } from "@/lib/auth";
 import { avatarSrc, readAvatar } from "@/data/dashboardProfile";
 import { MINIGAMES } from "@/data/landingData";
+import { ArcadeSelect } from "@/components/ui/ArcadeSelect";
 
 const PAGE_SIZE = 20;
 
@@ -35,12 +36,10 @@ export function DashboardRankings({ initialGameId }: { initialGameId: number }) 
         </button>
       </div>
       {!allPlayers && (
-        <label className="pwd-ranking-game">
-          Choose a game
-          <select value={gameId} onChange={(event) => { setGameId(Number(event.target.value)); setPage(0); }}>
-            {MINIGAMES.map((game) => <option key={game.id} value={game.id}>{game.gameName}</option>)}
-          </select>
-        </label>
+        <div className="pwd-ranking-game">
+          <ArcadeSelect label="Choose a game" value={String(gameId)} onValueChange={(value) => { setGameId(Number(value)); setPage(0); }}
+            options={MINIGAMES.map((game) => ({ value: String(game.id), label: game.gameName }))} />
+        </div>
       )}
       <RankingPage
         key={`${view}:${gameId}:${page}:${retry}`}

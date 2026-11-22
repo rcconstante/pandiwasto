@@ -20,6 +20,7 @@ const policies = {
       ["Account information", "When you sign up or sign in, the form sends your email and password to Supabase Auth to create or verify your account. PandiWasto does not write your password to browser storage."],
       ["Browser storage", "Supabase Auth remembers your session on this device. PandiWasto remembers your sound preference and your response to the cookie notice."],
       ["Profile details", "Settings saves the profile details you choose to provide, including optional gender, to your account. Rankings shows a generated alias, avatar, level, and game scores."],
+      ["Profile photos", "An uploaded photo is stored privately for your header and profile. You can switch back to an arcade avatar in Settings."],
       ["Account play", "When account play is available, the arcade saves your answers, game results, and skill estimates to your account."],
       ["Rankings", "Signed-in learners can see generated player aliases and best game scores. Rankings use a separate alias from your editable profile name."],
       ["Shared devices", "Sign out when you finish on a shared device. You can remove this site’s stored browser data in your browser settings. Clearing browser data does not delete your account."],

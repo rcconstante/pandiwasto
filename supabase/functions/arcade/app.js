@@ -15,6 +15,11 @@ const answerBody = z.strictObject({
   response: z.string().regex(/^[A-Z]{0,32}$/),
 });
 const hintBody = z.strictObject({ expectedRound });
+const tapBody = z.strictObject({
+  tapId: uuid,
+  expectedRound,
+  removed: z.array(z.number().int().min(0).max(11)).min(1).max(12),
+});
 const endBody = z.strictObject({});
 const moderationBody = z.strictObject({
   gameId: z.number().int().min(1).max(7),
@@ -255,6 +260,16 @@ export function createArcadeHandler({
     name: "pandiwasto_pop_answer", params: runParams, body: answerBody, response: answerSnapshot,
     args: ({ runId }, input) => ({ active_run: runId, answer_id: input.answerId, expected_round: input.expectedRound, response: input.response }),
     transform: ({ root, ...state }) => state.correct || state.status === "completed" ? { ...state, root } : state,
+  }));
+  arcade.post("/pop/:runId/tap", route({
+    name: "pandiwasto_pop_tap", params: runParams, body: tapBody,
+    response: z.discriminatedUnion("outcome", [
+      snapshot.extend({ outcome: z.literal("continue") }),
+      answerSnapshot.extend({ outcome: z.literal("miss") }),
+      answerSnapshot.extend({ outcome: z.literal("solved"), root: promptWord }),
+    ]),
+    args: ({ runId }, input) => ({ active_run: runId, tap_id: input.tapId, expected_round: input.expectedRound, removed: input.removed }),
+    transform: (value) => value.outcome === "miss" && value.status !== "completed" ? { ...value, root: undefined } : value,
   }));
   arcade.post("/pop/:runId/hint", route({
     name: "pandiwasto_pop_hint", params: runParams, body: hintBody, response: hint,
