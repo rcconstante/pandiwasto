@@ -8,7 +8,9 @@
 - Hints use a three-level ladder in six games (not Whack-a-Word). The optional Gemini adapter rephrases each level on the server for all six games, with a leak check, a 2.2-second timeout, an in-memory cache, an hourly cap, and authored fallbacks. Every hint is logged in `arcade_hints`.
 - Study conditions: A gives a hint after a wrong answer when mastery is below 0.70 or has stalled below the mastery threshold over the last three updates. B gives a hint after two misses in a row on the same skill. C gives no hints. Each ladder level counts toward the cap of four hints per run.
 - Admin manages accounts (create, role, suspend, restore), classes, score moderation, cohorts, assessments, invitations, and paginated pseudonymized exports of assessments, attempts, and hints.
-- Teachers read their classes: per-skill mastery for each student, a CSV download, and each student's latest answers. Admins can read every class.
+- Teachers create and manage their own classes (students only, every change logged) and read per-skill mastery, a CSV download, and each student's latest answers. Admins manage every class and assign teachers.
+- Teachers and admins see the same Rankings as learners; admins can hide or restore a score there.
+- Admin Settings edits BKT parameters per skill (each save is a new version kept for exports), shows the hint policy, and tests the AI hint provider. Study stays admin-only because it holds consent records and blinded group assignments.
 
 ## Staging and verification
 

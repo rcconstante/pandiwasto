@@ -150,6 +150,24 @@ function accountRateLimiter() {
   };
 }
 
+// A page load sends several requests with the same token. Remembering a verified token briefly
+// skips repeated Auth round trips; a suspension still applies within this window.
+function verifiedUserCache({ ttlMs = 20_000, limit = 2_000, now = Date.now } = {}) {
+  const entries = new Map();
+  return {
+    get(token) {
+      const entry = entries.get(token);
+      if (entry && entry.until > now()) return entry.user;
+      entries.delete(token);
+      return undefined;
+    },
+    set(token, user) {
+      if (entries.size >= limit) entries.delete(entries.keys().next().value);
+      entries.set(token, { user, until: now() + ttlMs });
+    },
+  };
+}
+
 /**
  * @param {{
  *   supabase?: import("npm:@supabase/supabase-js@2.119.0").SupabaseClient | null,
@@ -173,6 +191,7 @@ export function createArcadeHandler({
     post: (path, handler) => register("POST", path, handler),
   };
   const checkRateLimit = accountRateLimiter();
+  const verifiedUsers = verifiedUserCache();
 
   async function handleRequest(request) {
     const origin = request.headers.get("Origin");
@@ -209,19 +228,24 @@ export function createArcadeHandler({
         const token = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec(request.headers.get("Authorization") ?? "")?.[1];
         if (!token || token.length > 12_000) throw new ArcadeError(401, "Sign in to use the arcade.");
 
-        const { data, error } = await supabase.auth.getUser(token);
-        if (error && (!error.status || error.status >= 500 || error.status === 429)) {
-          throw new ArcadeError(503, "Sign-in verification is unavailable. Try again shortly.");
-        }
-        if (error || !uuid.safeParse(data?.user?.id).success) {
-          throw new ArcadeError(401, "Your sign-in session has expired.");
-        }
-        if (data.user.is_anonymous || !data.user.email_confirmed_at) {
-          throw new ArcadeError(403, "Confirm your email to use the arcade.");
-        }
-        // Suspension blocks new sign-ins at Auth; this also stops tokens issued before it.
-        if (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now()) {
-          throw new ArcadeError(403, "This account is suspended.");
+        const data = { user: verifiedUsers.get(token) };
+        if (!data.user) {
+          const { data: verified, error } = await supabase.auth.getUser(token);
+          if (error && (!error.status || error.status >= 500 || error.status === 429)) {
+            throw new ArcadeError(503, "Sign-in verification is unavailable. Try again shortly.");
+          }
+          if (error || !uuid.safeParse(verified?.user?.id).success) {
+            throw new ArcadeError(401, "Your sign-in session has expired.");
+          }
+          if (verified.user.is_anonymous || !verified.user.email_confirmed_at) {
+            throw new ArcadeError(403, "Confirm your email to use the arcade.");
+          }
+          // Suspension blocks new sign-ins at Auth; this also stops tokens issued before it.
+          if (verified.user.banned_until && Date.parse(verified.user.banned_until) > Date.now()) {
+            throw new ArcadeError(403, "This account is suspended.");
+          }
+          data.user = verified.user;
+          verifiedUsers.set(token, verified.user);
         }
 
         checkRateLimit(data.user.id);

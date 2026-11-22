@@ -3,7 +3,7 @@ import { Activity, ArrowRight, Download, Eye, EyeOff, FilePlus2, FlaskConical, G
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
 import { MINIGAMES } from "@/data/landingData";
 import { ArcadeSelect } from "@/components/ui/ArcadeSelect";
-import { arcadeRequest, checkHintProvider, loadAdminStatus, loadClasses } from "@/lib/arcadeApi";
+import { arcadeRequest, loadAdminStatus, loadClasses } from "@/lib/arcadeApi";
 import { formValue, useAdminAction, useRemote } from "./adminActions";
 import { downloadFile } from "./downloadFile";
 import { LoadState, Modal, Notice, PageHeader, SkeletonStats } from "./StaffKit";
@@ -54,13 +54,14 @@ async function loadOverview(signal: AbortSignal) {
   ];
 }
 
-export function AdminOverview({ onOpen }: { onOpen: (section: "accounts" | "classes" | "progress" | "study") => void }) {
+export function AdminOverview({ onOpen }: { onOpen: (section: "accounts" | "classes" | "progress" | "study" | "settings") => void }) {
   const overview = useRemote(loadOverview, "overview");
   const shortcuts = [
     { section: "accounts" as const, title: "Create accounts", text: "Add students and teachers, and set roles.", icon: UserPlus },
     { section: "classes" as const, title: "Set up classes", text: "Assign a teacher and add students.", icon: GraduationCap },
     { section: "progress" as const, title: "Review progress", text: "See BKT mastery for each class.", icon: Activity },
     { section: "study" as const, title: "Run the study", text: "Cohorts, assessments, and exports.", icon: FlaskConical },
+    { section: "settings" as const, title: "Tune BKT and hints", text: "Parameters, hint policy, AI check.", icon: Sparkles },
   ];
   return (
     <>
@@ -72,7 +73,6 @@ export function AdminOverview({ onOpen }: { onOpen: (section: "accounts" | "clas
           ))}
         </dl>
       )}
-      <HintCheck />
       <h2 className="st-section-title">Quick actions</h2>
       <div className="st-shortcuts">
         {shortcuts.map(({ section, title, text, icon: Icon }) => (
@@ -84,28 +84,6 @@ export function AdminOverview({ onOpen }: { onOpen: (section: "accounts" | "clas
         ))}
       </div>
     </>
-  );
-}
-
-/** Calls the hint provider once with a fixed sample item and shows the result or the exact error. */
-function HintCheck() {
-  const { busy, message, run } = useAdminAction();
-  return (
-    <section className="st-card st-card-head">
-      <div>
-        <h2 className="st-card-title">AI hints</h2>
-        <p className="st-muted">Sends one sample hint request to Gemini. No learner data is sent.</p>
-      </div>
-      <button type="button" className="st-button" disabled={busy} onClick={() => void run(async () => {
-        const result = await checkHintProvider();
-        if (!result.configured) throw new Error(result.error);
-        if (!result.ok) throw new Error(`${result.model}: ${result.error}`);
-        return `${result.model} answered in ${((result.latencyMs ?? 0) / 1000).toFixed(1)} s: “${result.text}”`;
-      }, (error) => error instanceof Error && error.message ? error.message : "The check could not run.")}>
-        <Sparkles size={16} aria-hidden="true" /> {busy ? "Testing…" : "Test AI hints"}
-      </button>
-      {message && <div className="st-span" style={{ flexBasis: "100%" }}><Notice message={message} /></div>}
-    </section>
   );
 }
 
@@ -143,9 +121,10 @@ export function AdminScores() {
 
   return (
     <>
-      <PageHeader title="Scores" description="Find a player's best score and hide or restore it in Rankings. Every change records a reason." />
       <Notice message={message} />
-      <section className="st-card">
+      <section className="st-card" aria-labelledby="st-moderation">
+        <h2 id="st-moderation" className="st-card-title">Moderate a score</h2>
+        <p className="st-muted st-card-intro">Find a player's best score and hide or restore it in Rankings. Every change records a reason.</p>
         <form className="st-inline-form st-inline-form-3" onSubmit={lookupScore}>
           <ArcadeSelect className="st-select" label="Game" hideLabel name="gameId" defaultValue={String(MINIGAMES[0].id)} options={MINIGAMES.map(({ id, gameName }) => ({ value: String(id), label: gameName }))} />
           <label><span className="sr-only">Player alias or account ID</span><input name="lookup" required maxLength={64} autoComplete="off" placeholder="Player alias (Player 012345ABCD) or account ID" /></label>

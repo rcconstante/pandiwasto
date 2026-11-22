@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { loadRoles } from "@/lib/arcadeApi";
-import { Dashboard } from "./Dashboard";
-import { StaffDashboard } from "./StaffDashboard";
+
+// Learners never download the staff dashboard, and staff never download the games.
+const Dashboard = lazy(async () => ({ default: (await import("./Dashboard")).Dashboard }));
+const StaffDashboard = lazy(async () => ({ default: (await import("./StaffDashboard")).StaffDashboard }));
 
 type Roles = { admin: boolean; teacher: boolean };
 const rolesKey = (userId: string) => "pw-roles:" + userId;
@@ -18,9 +20,12 @@ function readCachedRoles(userId: string): Roles | null {
   }
 }
 
+const loading = <main className="pw-dashboard pwd-game-loading"><p className="pwd-game-loading-status" role="status"><span className="pwd-game-spinner" aria-hidden="true" /> Loading your account…</p></main>;
+
 /** Teachers and admins get the staff dashboard; everyone else gets the learner arcade. */
 export function AccountHome({ user, onHome }: { user: User; onHome: () => void }) {
   const [roles, setRoles] = useState<Roles | null>(() => readCachedRoles(user.id));
+  const staff = Boolean(roles?.admin || roles?.teacher);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -31,7 +36,6 @@ export function AccountHome({ user, onHome }: { user: User; onHome: () => void }
     return () => abort.abort();
   }, [user.id]);
 
-  const staff = Boolean(roles?.admin || roles?.teacher);
   // A staff page address (?section=…) left from an earlier sign-in means nothing to a learner.
   useEffect(() => {
     if (!roles || staff) return;
@@ -41,7 +45,10 @@ export function AccountHome({ user, onHome }: { user: User; onHome: () => void }
     history.replaceState(history.state, "", url);
   }, [roles, staff]);
 
-  if (!roles) return <main className="pw-dashboard pwd-game-loading"><p className="pwd-game-loading-status" role="status"><span className="pwd-game-spinner" aria-hidden="true" /> Loading your account…</p></main>;
-  if (staff) return <StaffDashboard user={user} admin={roles.admin} onHome={onHome} />;
-  return <Dashboard user={user} onHome={onHome} />;
+  if (!roles) return loading;
+  return (
+    <Suspense fallback={loading}>
+      {staff ? <StaffDashboard user={user} admin={roles.admin} onHome={onHome} /> : <Dashboard user={user} onHome={onHome} />}
+    </Suspense>
+  );
 }

@@ -8,7 +8,8 @@ import { Avatar, ConfirmModal, LoadState, Modal, Notice, PageHeader, SearchField
 const NO_TEACHER = "none";
 type Dialog = "create" | "edit" | "delete" | null;
 
-export function AdminClasses() {
+/** Admins manage every class and assign teachers; teachers manage only their own classes. */
+export function AdminClasses({ admin }: { admin: boolean }) {
   const [selectedId, setSelectedId] = useState("");
   const [filter, setFilter] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -56,7 +57,9 @@ export function AdminClasses() {
       classes.reload();
       roster.reload();
       return "Student added.";
-    }, (error) => isConflict(error) ? "That alias matches more than one player. Use the email or account ID." : "Couldn’t find a confirmed account for that student.");
+    }, (error) => isConflict(error)
+      ? "That account can’t join: it is a staff account, or the alias matches more than one player (use the email)."
+      : "Couldn’t find a confirmed account for that student.");
   }
 
   function removeMember(studentId: string, name: string) {
@@ -84,8 +87,12 @@ export function AdminClasses() {
     <form key={classId ?? "new"} className="st-form" onSubmit={(event) => void save(event, classId)}>
       {message?.error && <Notice message={message} />}
       <label>Class name<input name="name" required maxLength={80} defaultValue={selected && classId ? selected.name : ""} placeholder="Grade 6 – Sampaguita" /></label>
-      <ArcadeSelect className="st-select" label="Teacher" name="teacher" defaultValue={(classId && selected?.teacherId) || NO_TEACHER} options={teacherOptions} />
-      <p className="st-hint">Only accounts with the Teacher role are listed. Set roles in Accounts.</p>
+      {admin && (
+        <>
+          <ArcadeSelect className="st-select" label="Teacher" name="teacher" defaultValue={(classId && selected?.teacherId) || NO_TEACHER} options={teacherOptions} />
+          <p className="st-hint">Only accounts with the Teacher role are listed. Set roles in Accounts.</p>
+        </>
+      )}
       <div className="st-modal-actions">
         <button type="button" className="st-button" onClick={() => setDialog(null)}>Cancel</button>
         <button className="st-button st-button-primary" disabled={busy}>{classId ? "Save class" : "Create class"}</button>
@@ -95,7 +102,9 @@ export function AdminClasses() {
 
   return (
     <>
-      <PageHeader title="Classes" description="Teachers see mastery and answers only for students in their classes."
+      <PageHeader title="Classes" description={admin
+        ? "Teachers see mastery and answers only for students in their classes."
+        : "Create your classes and add students by email, alias, or account ID."}
         actions={<button type="button" className="st-button st-button-primary" onClick={() => openDialog("create")}><Plus size={17} aria-hidden="true" /> Create class</button>} />
       {dialog === null && <Notice message={message} />}
 

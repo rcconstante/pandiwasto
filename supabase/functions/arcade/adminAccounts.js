@@ -66,6 +66,27 @@ export function mountAdminAccounts(router, { ArcadeError, route }) {
     return json({ suspended: input.data.suspended });
   });
 
+  const probability = z.number().min(0).max(1);
+  router.get("/admin/skills", route({
+    name: "pandiwasto_admin_skills",
+    response: z.object({ skills: z.array(z.object({
+      skillId: z.string(), initial: probability, learn: probability, guess: probability, slip: probability,
+      masteryThreshold: probability, paramVersion: z.number().int().positive(), updatedAt: z.iso.datetime({ offset: true }).nullable(),
+    })).max(40) }),
+  }));
+
+  router.post("/admin/skills/update", route({
+    name: "pandiwasto_admin_skill_update",
+    body: z.strictObject({
+      skillId: z.string().regex(/^[a-z][a-z0-9-]{0,79}$/), initial: z.number().min(0.01).max(0.99), learn: z.number().min(0).max(0.99),
+      guess: z.number().gt(0).lt(1), slip: z.number().gt(0).lt(0.5), masteryThreshold: z.number().gt(0.5).max(1),
+    }),
+    args: (_params, input) => ({
+      skill: input.skillId, initial: input.initial, learn: input.learn, guess: input.guess, slip: input.slip, threshold: input.masteryThreshold,
+    }),
+    response: z.object({ paramVersion: z.number().int().positive() }),
+  }));
+
   router.get("/admin/classes", route({
     name: "pandiwasto_admin_classes",
     response: z.object({

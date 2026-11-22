@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { authClient } from "@/lib/auth";
 import { SignInModal } from "@/components/ui/auth-ui";
 import { LandingPage } from "@/pages/LandingPage";
-import { AccountHome } from "@/pages/AccountHome";
 import { clearRemoteCache } from "@/pages/adminActions";
+
+// Signed-out visitors only download the landing page.
+const AccountHome = lazy(async () => ({ default: (await import("@/pages/AccountHome")).AccountHome }));
 
 const LANDING_ANCHORS = ["#home", "#games", "#bkt-engine", "#impact", "#faq", "#main-content"];
 
@@ -65,7 +67,7 @@ export function App() {
   return (
     <>
       {session && !showLanding
-        ? <AccountHome key={session.user.id} user={session.user} onHome={() => navigateHome(true)} />
+        ? <Suspense fallback={<main className="pw-dashboard" />}><AccountHome key={session.user.id} user={session.user} onHome={() => navigateHome(true)} /></Suspense>
         : <LandingPage returning={Boolean(session)} onOpenAuth={session ? () => navigateHome(false) : openAuth} />}
       {!session && (
         <SignInModal

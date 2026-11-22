@@ -74,7 +74,22 @@ export const checkHintProvider = () => arcadeRequest<{
   configured: boolean; ok: boolean; model?: string | null; text?: string; error?: string; latencyMs?: number; available?: string[];
 }>("admin/hints/check", {});
 
-export type AccountRole ="student" | "teacher" | "admin";
+export interface SkillParameters {
+  skillId: string;
+  initial: number;
+  learn: number;
+  guess: number;
+  slip: number;
+  masteryThreshold: number;
+  paramVersion: number;
+  updatedAt: string | null;
+}
+
+export const loadSkills = (signal?: AbortSignal) => arcadeRequest<{ skills: SkillParameters[] }>("admin/skills", undefined, signal);
+export const updateSkill = (skill: Omit<SkillParameters, "paramVersion" | "updatedAt">) =>
+  arcadeRequest<{ paramVersion: number }>("admin/skills/update", skill);
+
+export type AccountRole = "student" | "teacher" | "admin";
 
 export interface Account {
   id: string;

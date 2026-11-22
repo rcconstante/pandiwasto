@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { BarChart3, ChevronDown, FlaskConical, GraduationCap, LayoutDashboard, LogOut, Trophy, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, ChevronDown, FlaskConical, GraduationCap, LayoutDashboard, LogOut, SlidersHorizontal, Trophy, Users, type LucideIcon } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { authClient } from "@/lib/auth";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { readProfile } from "@/data/dashboardProfile";
 import { AdminAccounts } from "./AdminAccounts";
 import { AdminClasses } from "./AdminClasses";
+import { AdminSettings } from "./AdminSettings";
 import { AdminOverview, AdminScores, AdminStudy } from "./DashboardAdmin";
 import { DashboardTeacher } from "./DashboardTeacher";
+import { StaffRankings } from "./StaffRankings";
 import { Avatar, Notice } from "./StaffKit";
 import "./dashboard.css";
 import "./staff.css";
 
-type SectionId = "overview" | "progress" | "accounts" | "classes" | "study" | "scores";
+type SectionId = "overview" | "progress" | "classes" | "rankings" | "accounts" | "study" | "settings";
 interface Section {
   id: SectionId;
   label: string;
@@ -24,10 +26,12 @@ interface Section {
 const SECTIONS: Section[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, adminOnly: true },
   { id: "progress", label: "Class progress", icon: BarChart3, adminOnly: false },
+  { id: "classes", label: "Classes", icon: GraduationCap, adminOnly: false },
+  { id: "rankings", label: "Rankings", icon: Trophy, adminOnly: false },
   { id: "accounts", label: "Accounts", icon: Users, adminOnly: true },
-  { id: "classes", label: "Classes", icon: GraduationCap, adminOnly: true },
+  // Study stays admin-only: it holds consent records and blinded group assignments.
   { id: "study", label: "Study", icon: FlaskConical, adminOnly: true },
-  { id: "scores", label: "Scores", icon: Trophy, adminOnly: true },
+  { id: "settings", label: "Settings", icon: SlidersHorizontal, adminOnly: true },
 ];
 
 // The open section lives in the URL (?section=accounts) so reloads and shared links keep it.
@@ -107,10 +111,11 @@ export function StaffDashboard({ user, admin, onHome }: { user: User; admin: boo
         {signOutError && <Notice message={{ text: "We couldn’t sign you out. Try again.", error: true }} />}
         {active === "overview" && <AdminOverview onOpen={open} />}
         {active === "progress" && <DashboardTeacher />}
+        {active === "classes" && <AdminClasses admin={admin} />}
+        {active === "rankings" && <><StaffRankings />{admin && <AdminScores />}</>}
         {active === "accounts" && <AdminAccounts />}
-        {active === "classes" && <AdminClasses />}
         {active === "study" && <AdminStudy />}
-        {active === "scores" && <AdminScores />}
+        {active === "settings" && <AdminSettings />}
       </main>
     </div>
   );
