@@ -3,16 +3,10 @@ import type { User } from "@supabase/supabase-js";
 import { ArrowLeft, ArrowRight, ChevronDown, ClipboardCheck, Lock, LogOut, Play, Settings, ShieldCheck, Star, Trophy, UserRound } from "lucide-react";
 import { DropdownMenu, Tabs } from "radix-ui";
 import { authClient } from "@/lib/auth";
-import { arcadeApiUrl, getStudyState, loadAccountProgress, loadAdminStatus, loadMastery } from "@/lib/arcadeApi";
+import { ArcadeRequestError, getStudyState, loadAccountProgress, loadAdminStatus, loadMastery } from "@/lib/arcadeApi";
 import { BalloonGame } from "@/components/games/BalloonGame";
 import { XP_PER_LEVEL, type ArcadeProgress } from "@/data/arcadeProgress";
 import { BALLOON_GAME_ID } from "@/data/balloonGame";
-import { WHACK_GAME_ID } from "@/data/whackGame";
-import { TOSS_GAME_ID } from "@/data/tossGame";
-import { MEMORY_GAME_ID } from "@/data/memoryGame";
-import { TICKET_GAME_ID } from "@/data/ticketGame";
-import { CLAW_GAME_ID } from "@/data/clawGame";
-import { FORTUNE_GAME_ID } from "@/data/fortuneGame";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
 import { MINIGAMES } from "@/data/landingData";
 import { avatarSrc, type ProfileDetails, readProfile } from "@/data/dashboardProfile";
@@ -29,17 +23,18 @@ const TABS = [
   { id: "rankings", label: "Rankings" },
   { id: "profile", label: "Profile" },
   { id: "settings", label: "Settings" },
+  { id: "study", label: "Study" },
 ];
 const RankedGame = lazy(async () => ({ default: (await import("@/components/games/RankedGame")).RankedGame }));
 
 const GAME_GUIDES: Record<number, string> = {
   [BALLOON_GAME_ID]: "Find the root word in five rounds.",
-  [WHACK_GAME_ID]: "Match each word to its type before the mole ducks.",
-  [TOSS_GAME_ID]: "Choose a panlapi to complete each sentence.",
-  [MEMORY_GAME_ID]: "Flip cards to make Filipino compound words.",
-  [TICKET_GAME_ID]: "Pull the lever that completes the Filipino sentence.",
-  [CLAW_GAME_ID]: "Grab the doll that matches the verb focus.",
-  [FORTUNE_GAME_ID]: "Predict the word made with pang- before the card prints.",
+  2: "Match each word to its type before the mole ducks.",
+  3: "Choose a panlapi to complete each sentence.",
+  4: "Flip cards to make Filipino compound words.",
+  5: "Pull the lever that completes the Filipino sentence.",
+  6: "Grab the doll that matches the verb focus.",
+  7: "Predict the word made with pang- before the card prints.",
 };
 
 export function Dashboard({ user, onHome }: {
@@ -68,10 +63,9 @@ export function Dashboard({ user, onHome }: {
   const currentCard = useRef<HTMLButtonElement>(null);
   const base = import.meta.env.BASE_URL;
   const currentGame = MINIGAMES[gameIndex];
-  const accountPlay = Boolean(arcadeApiUrl);
   const canStartGames = accountProgress !== null && !accountError;
-  const gameStatus = !accountPlay || accountError ? "Games unavailable" : canStartGames ? "Ready to play" : "Loading account progress…";
-  const tabs = accountPlay ? [...TABS, { id: "study", label: "Study" }, ...(admin ? [{ id: "admin", label: "Admin" }] : [])] : TABS;
+  const gameStatus = accountError ? "Games unavailable" : canStartGames ? "Ready to play" : "Loading account progress…";
+  const tabs = admin ? [...TABS, { id: "admin", label: "Admin" }] : TABS;
   const studyPractice = studyState === "practice";
   const level = accountProgress ? 1 + Math.floor(accountProgress.xp / XP_PER_LEVEL) : null;
   const playerName = profile.displayName || "Player";
@@ -85,38 +79,39 @@ export function Dashboard({ user, onHome }: {
   }, [gameOpen]);
 
   useEffect(() => {
-    if (!accountPlay) return;
     const abort = new AbortController();
     void loadAccountProgress(abort.signal).then((data) => {
       if (abort.signal.aborted) return;
       setAccountProgress(data);
       setAccountError("");
-    }).catch(() => {
-      if (!abort.signal.aborted) setAccountError("Account progress is temporarily unavailable.");
+    }).catch((error: unknown) => {
+      if (abort.signal.aborted) return;
+      setAccountError(error instanceof ArcadeRequestError && error.status === 404
+        ? "The arcade function has not been deployed to this Supabase project."
+        : "Account progress is temporarily unavailable.");
     });
     return () => abort.abort();
-  }, [accountPlay, refresh]);
+  }, [refresh]);
 
   useEffect(() => {
-    if (!accountPlay || tab !== "games") return;
+    if (tab !== "games") return;
     const abort = new AbortController();
     void getStudyState(abort.signal).then((result) => {
       if (!abort.signal.aborted) setStudyState(result.state);
     }).catch(() => {});
     return () => abort.abort();
-  }, [accountPlay, refresh, tab]);
+  }, [refresh, tab]);
 
   useEffect(() => {
-    if (!accountPlay || tab !== "lessons") return;
+    if (tab !== "lessons") return;
     const abort = new AbortController();
     void loadMastery(abort.signal).then((result) => {
       if (!abort.signal.aborted) setMastery(result.skills);
     }).catch(() => {});
     return () => abort.abort();
-  }, [accountPlay, refresh, tab]);
+  }, [refresh, tab]);
 
   useEffect(() => {
-    if (!accountPlay) return;
     const abort = new AbortController();
     void loadAdminStatus(abort.signal).then((status) => {
       if (!abort.signal.aborted) setAdmin(status);
@@ -124,7 +119,7 @@ export function Dashboard({ user, onHome }: {
       if (!abort.signal.aborted) setAdmin(null);
     });
     return () => abort.abort();
-  }, [accountPlay, refresh]);
+  }, [refresh]);
 
   function chooseGame(index: number, direction = Math.sign(index - gameIndex)) {
     setGameDirection(direction);
@@ -217,7 +212,6 @@ export function Dashboard({ user, onHome }: {
       <div className="pwd-content">
         <h1 ref={title} tabIndex={-1}>{profile.displayName || profile.firstName ? `Kumusta, ${firstName}!` : "Tara, laro tayo!"}</h1>
         {exitError && <p role="alert">{exitError}</p>}
-        {!accountPlay && <p role="alert">The arcade server isn’t configured for this site.</p>}
         {accountError && <p role="alert">{accountError} <button type="button" className="pwd-text-action" onClick={() => setRefresh((count) => count + 1)}>Retry</button></p>}
         <Tabs.Root value={tab} onValueChange={setTab}>
           <Tabs.List className="pwd-tabs" aria-label="Dashboard pages">
@@ -335,14 +329,12 @@ export function Dashboard({ user, onHome }: {
               leaving={leaving}
             />
           </Tabs.Content>
-          {accountPlay && (
-            <Tabs.Content value="study" className="pwd-panel">
-              <DashboardStudy onStatusChange={setStudyState} onPlay={() => {
-                setTab("games");
-                requestAnimationFrame(() => gamesTab.current?.focus());
-              }} />
-            </Tabs.Content>
-          )}
+          <Tabs.Content value="study" className="pwd-panel">
+            <DashboardStudy onStatusChange={setStudyState} onPlay={() => {
+              setTab("games");
+              requestAnimationFrame(() => gamesTab.current?.focus());
+            }} />
+          </Tabs.Content>
           {admin && (
             <Tabs.Content value="admin" className="pwd-panel">
               <DashboardAdmin summary={admin} />

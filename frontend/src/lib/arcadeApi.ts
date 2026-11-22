@@ -1,7 +1,5 @@
 import type { ArcadeProgress } from "@/data/arcadeProgress";
-import { authClient } from "./auth";
-
-export const arcadeApiUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, "") ?? "";
+import { supabaseClient } from "./auth";
 
 export interface PopRun {
   runId: string;
@@ -35,26 +33,25 @@ export class ArcadeRequestError extends Error {
 }
 
 export async function arcadeRequest<T>(path: string, body?: object, signal?: AbortSignal): Promise<T> {
-  if (!arcadeApiUrl || !authClient) throw new Error("Account play is unavailable.");
-  const { data, error } = await authClient.getSession();
-  if (error || !data.session) throw new Error("Sign in again to use account play.");
+  if (!supabaseClient) throw new Error("Account play is unavailable.");
+  const { data: session, error: authError } = await supabaseClient.auth.getSession();
+  if (authError || !session.session) throw new Error("Sign in again to use account play.");
   const timeout = AbortSignal.timeout(12_000);
-  const response = await fetch(`${arcadeApiUrl}/api/arcade/${path}`, {
+  const { data, error } = await supabaseClient.functions.invoke<T>(`arcade/${path}`, {
     method: body ? "POST" : "GET",
     headers: {
-      Authorization: `Bearer ${data.session.access_token}`,
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${session.session.access_token}`,
     },
-    cache: "no-store",
-    body: body ? JSON.stringify(body) : undefined,
+    body,
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
-  if (response.status === 401) throw new ArcadeRequestError("Sign in again to use account play.", 401);
-  if (response.status === 403) throw new ArcadeRequestError("This action is unavailable for your account.", 403);
-  if (response.status === 409) throw new ArcadeRequestError("This changed on the server. Reopen this game to continue.", 409);
-  if (response.status === 429) throw new ArcadeRequestError("Wait a moment, then try again.", 429);
-  if (!response.ok) throw new ArcadeRequestError("The server could not save this request. Try again.", response.status);
-  return response.json() as Promise<T>;
+  if (!error && data !== null) return data;
+  const status = error?.context instanceof Response ? error.context.status : 503;
+  if (status === 401) throw new ArcadeRequestError("Sign in again to use account play.", 401);
+  if (status === 403) throw new ArcadeRequestError("This action is unavailable for your account.", 403);
+  if (status === 409) throw new ArcadeRequestError("This changed on the server. Reopen this game to continue.", 409);
+  if (status === 429) throw new ArcadeRequestError("Wait a moment, then try again.", 429);
+  throw new ArcadeRequestError("The arcade server could not complete this request. Try again.", status);
 }
 
 export const loadAccountProgress = (signal?: AbortSignal) => arcadeRequest<ArcadeProgress>("progress", undefined, signal);

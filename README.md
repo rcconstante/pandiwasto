@@ -21,10 +21,10 @@ PandiWasto is a Filipino morphology arcade. Players practice seven word-formatio
 | Layer | Tools |
 | --- | --- |
 | Frontend | React, TypeScript, Vite, Tailwind CSS, Radix UI, Lenis |
-| Backend | Node.js 24, Express, Zod |
+| Gameplay backend | Supabase Edge Functions, Deno, Zod |
 | Accounts and data | Supabase Auth, PostgreSQL, row-level security, SQL migrations |
 | Learning and hints | Bayesian Knowledge Tracing, authored Filipino hints, optional Google Gemini |
-| Verification | ESLint, TypeScript, Node.js test runner |
+| Verification | ESLint, TypeScript, Deno tests |
 
 ## Run locally
 
@@ -35,7 +35,7 @@ npm run install-all
 npm run dev
 ```
 
-Open [PandiWasto](http://localhost:5173) and choose **Log in** to sign in or create an account. Configure Supabase and the API using the steps below before testing gameplay. Run `npm run dev:frontend` to start only the frontend.
+Open [PandiWasto](http://localhost:5173) and choose **Log in** to sign in or create an account. Configure the frontend to use a Supabase project with the `arcade` function deployed before testing gameplay.
 
 ## Arcade games
 
@@ -56,27 +56,34 @@ The arcade has animated score updates, visual success and retry cues, and a soun
 ## Account play and database setup
 
 1. Apply all six [migrations](supabase/migrations) in filename order to a staging Supabase project, then verify the staging rollout before applying them to production.
-2. Copy `frontend/.env.local.example` to `frontend/.env.local`. Set `VITE_API_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_PUBLISHABLE_KEY` using the project’s browser publishable key.
-3. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CLIENT_URL` in `backend/.env`. Use the service role only from the server. Enable email sign-in and add the landing page URL to the Supabase Auth redirect allowlist.
-4. Use Node.js 24 and start the app with `npm run dev` from the repository root. After confirming their email, players can sign in and earn account progress in all seven games.
+2. Deploy the `arcade` Edge Function to the same Supabase project. The function uses Supabase’s built-in project URL and server key.
+3. Copy `frontend/.env.local.example` to `frontend/.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` using that project’s browser publishable key. Enable email sign-in and allow the local or deployed frontend URL in Supabase Auth.
 
 The server validates account game moves before saving XP, levels, and best scores. Signed-in Rankings shows generated aliases, avatars, levels, and validated scores. Whack-a-Word practice earns XP and stays out of Rankings. The header avatar opens the menu for Profile, Settings, and Sign out.
 
 ## Deploy
 
-1. Import the repository into Vercel. Choose the **Vite** preset, set the root directory to `frontend`, use `npm run build`, and publish `dist`.
-2. For account play, deploy `backend` as an HTTPS Node.js service with `npm start`. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CLIENT_URL`. Set `CLIENT_URL` to the exact Vercel frontend origin to allow API requests. Keep the service key and any `GEMINI_API_KEY` in the backend environment.
-3. In the Vercel project, set `VITE_API_URL` to the deployed API URL, and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Add the frontend URL to the Supabase Auth redirect allowlist and redeploy the frontend.
-4. Apply any pending Supabase migrations in order. Check `/api/health` on the backend, then confirm email sign-in, score saving, and Rankings on the deployed frontend.
+From the repository root, sign in to the Supabase CLI and deploy the function to the project where you applied the migrations. Replace `YOUR_PROJECT_REF` with the project reference.
 
-See the [Vercel guide for Vite](https://vercel.com/docs/frameworks/frontend/vite), [frontend environment template](frontend/.env.local.example), and [backend environment template](backend/.env.example).
+```bash
+npx supabase login
+npx supabase functions deploy arcade --remote=YOUR_PROJECT_REF --use-api
+```
+
+1. Import the repository into Vercel. Choose the **Vite** preset, set the root directory to `frontend`, use `npm run build`, and publish `dist`.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in Vercel and add the frontend URL to the Supabase Auth redirect allowlist. For an existing deployment, remove the obsolete `VITE_API_URL` and redeploy the frontend.
+3. Check `/functions/v1/arcade/health` on the Supabase project URL, then confirm email sign-in, score saving, and Rankings on the deployed frontend.
+
+Supabase Auth verifies the user token on every protected function request. Set the optional `ARCADE_ALLOWED_ORIGINS` Edge Function secret to a comma-separated list of frontend origins if you want to limit browser access. Set the optional `GEMINI_API_KEY` only in Edge Function secrets to enable generated hints.
+
+See the [Supabase Edge deployment guide](https://supabase.com/docs/guides/functions/deploy), [Vercel guide for Vite](https://vercel.com/docs/frameworks/frontend/vite), and [frontend environment template](frontend/.env.local.example).
 
 ## Verify locally
 
 ```bash
 npm run lint --prefix frontend
 npm run build --prefix frontend
-npm test --prefix backend
+deno test --config supabase/functions/arcade/deno.json supabase/functions/arcade
 ```
 
 ## Administration and study

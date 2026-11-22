@@ -2,7 +2,7 @@
 
 ## Implemented
 
-- All seven account games run server-validated sessions and save verified progress, attempt observations, and leaderboard results. Preview remains playable with browser-local results. Whack-a-Word practice awards account XP without publishing a ranked score.
+- All seven games require an account. The Supabase `arcade` Edge Function validates sessions and saves progress, attempt observations, and leaderboard results. Whack-a-Word practice awards account XP without publishing a ranked score.
 - Admin provides alias and account-ID score lookup, hide and restore actions with recorded reasons, cohort setup, participant invitations, assessment authoring, and paginated pseudonymized JSON exports.
 - Study provides private balanced assignments, participant affirmation and withdrawal, parallel pre- and post-assessments with server-owned answer keys, and a scheduled practice window. The three hint policies are low mastery after a miss, two consecutive misses, and no hints. The low-mastery threshold is 0.70 and the hint cap is four per run. Eligible study clues appear automatically in games with hints.
 - Lessons shows BKT estimates for the ten configured skills once qualifying attempts exist. Only first unaided observations update mastery. Later attempts and timeouts are retained where applicable. These are starting rules for pilot calibration.
@@ -10,9 +10,9 @@
 
 ## Staging and verification
 
-1. Use Node.js 24 with the complete repository checkout. Backend ranked games share content with the frontend. Run `npm run install-all` from the root.
-2. Apply the six migrations in order to staging. Set the frontend Supabase URL, browser publishable key, and API URL. Set the server URL, service-role key, and exact frontend origin. Keep provider secrets in server-only environment variables. Configure Supabase email sign-in and confirmation redirects.
-3. Run `npm run test --prefix backend`, `npm run lint --prefix frontend`, and `npm run build --prefix frontend`. Check `/api/health` and `/api/db-test`, then sign in with two confirmed staging accounts. Play and retry a run, confirm cross-device XP and rankings, and verify that ordinary learners receive no admin access. Test authorized score hide and restore in Rankings.
+1. Install Node.js 24 and Deno. Run `npm run install-all` from the repository root.
+2. Apply the six migrations in order to staging and deploy the `arcade` function there. Set the frontend Supabase URL and browser publishable key. Configure Supabase email sign-in and confirmation redirects. Store provider credentials in Edge Function secrets.
+3. Run `deno test --config supabase/functions/arcade/deno.json supabase/functions/arcade`, `npm run lint --prefix frontend`, and `npm run build --prefix frontend`. Check `/functions/v1/arcade/health`, then sign in with two confirmed staging accounts. Play and retry a run, confirm cross-device XP and rankings, and verify that ordinary learners receive no admin access. Test authorized score hide and restore in Rankings.
 4. Assign an administrator by inserting the confirmed account’s user ID into `pandiwasto_private.arcade_admins` through an authorized database operator. Verify score lookup, setup of a disposable approved cohort, acceptance and withdrawal, separate assessment scoring, study unlocking, and an export that contains no account IDs or email addresses.
 5. Before enabling generated hints, supply `GEMINI_API_KEY` in the server environment. Run the provider and authored fallback acceptance checks with staging data. The Gemini adapter uses the [GenerateContent API](https://ai.google.dev/api/generate-content).
 

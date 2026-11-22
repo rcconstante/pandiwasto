@@ -6,7 +6,7 @@ This workspace contains the landing page, email sign-in, learner dashboard, and 
 
 Run `npm install` and `npm run dev` from `frontend`. Open **Log in** to sign in or create an account. Use `npm run build` and `npm run lint` to check changes.
 
-For email accounts, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_API_URL` in `.env.local`. Signup assigns a display name and one of ten avatars. The header opens a read-only Profile with the player’s avatar, name, level, and XP. Use Settings to edit the avatar, display name, first name, last name, and optional gender.
+For email accounts and gameplay, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` for a project with the `arcade` Edge Function deployed. Signup assigns a display name and one of ten avatars. The header opens a read-only Profile with the player’s avatar, name, level, and XP. Use Settings to edit the avatar, display name, first name, last name, and optional gender.
 
 ## Integration status
 

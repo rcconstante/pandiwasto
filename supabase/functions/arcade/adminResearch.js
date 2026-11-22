@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "npm:zod@4.6.7";
 
 const uuid = z.uuid();
 const date = z.iso.datetime({ offset: true });

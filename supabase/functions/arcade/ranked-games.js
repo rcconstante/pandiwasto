@@ -1,9 +1,9 @@
-import { dealWhackDeck, whackWindow, WORD_TYPES } from "../frontend/src/data/whackGame.ts";
-import { AFFIX_TYPES, applyAffix, buildTossRun, tileLabel } from "../frontend/src/data/tossGame.ts";
-import { buildMemoryRun, memoryScore } from "../frontend/src/data/memoryGame.ts";
-import { buildTicketRun, ticketWord, TICKET_LEVERS } from "../frontend/src/data/ticketGame.ts";
-import { buildClawRun, CLAW_ROLES } from "../frontend/src/data/clawGame.ts";
-import { buildFortuneRun, FORTUNE_HINTS } from "../frontend/src/data/fortuneGame.ts";
+import { dealWhackDeck, whackWindow, WORD_TYPES } from "./items/whackGame.ts";
+import { AFFIX_TYPES, applyAffix, buildTossRun, tileLabel } from "./items/tossGame.ts";
+import { buildMemoryRun, memoryScore } from "./items/memoryGame.ts";
+import { buildTicketRun, ticketWord, TICKET_LEVERS } from "./items/ticketGame.ts";
+import { buildClawRun, CLAW_ROLES } from "./items/clawGame.ts";
+import { buildFortuneRun, FORTUNE_HINTS } from "./items/fortuneGame.ts";
 
 const ENGINE_VERSION = 1;
 const CHOICE_ROUNDS = 5;

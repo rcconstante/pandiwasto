@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "npm:zod@4.6.7";
 
 const generatedHint = z.string().trim().min(1).max(300);
 

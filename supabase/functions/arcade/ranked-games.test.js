@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
 import { createRankedState, moveRanked, projectRanked, RankedMoveError } from "./ranked-games.js";
 
 const runId = "4947bafb-8fcb-41ec-bc0f-6f59731fbba0";
@@ -7,7 +6,7 @@ const epoch = 100_000;
 const frame = (state, now = epoch) => projectRanked({ runId, version: 0, status: "active", state }, now);
 
 for (const gameId of [3, 5, 6, 7]) {
-  test("Ranked choice game " + gameId + " validates choices, hints, scoring and finish", () => {
+  Deno.test("Ranked choice game " + gameId + " validates choices, hints, scoring and finish", () => {
     let state = createRankedState(gameId, "ranked", epoch);
     assert.equal(state.rounds.length, 5);
     assert.equal(frame(state).round, 0);
@@ -49,7 +48,7 @@ for (const gameId of [3, 5, 6, 7]) {
   });
 }
 
-test("Whack validates deadlines, awards XP on hits, and completes after three strikes", () => {
+Deno.test("Whack validates deadlines, awards XP on hits, and completes after three strikes", () => {
   const start = createRankedState(2, "ranked", epoch);
   assert.equal(frame(start).deadline, epoch + 10_000);
   assert.throws(() => moveRanked(start, { type: "timeout" }, epoch + 9_999), RankedMoveError);
@@ -85,7 +84,7 @@ test("Whack validates deadlines, awards XP on hits, and completes after three st
   assert.throws(() => createRankedState(3, "practice", epoch), RankedMoveError);
 });
 
-test("Memory conceals cards, tracks mismatches, and banks three board scores", () => {
+Deno.test("Memory conceals cards, tracks mismatches, and banks three board scores", () => {
   let now = epoch;
   let state = createRankedState(4, "ranked", now);
   assert.equal(frame(state).cards.length, 6);

@@ -1,0 +1,5 @@
+project_id = "pandiwasto"
+
+[functions.arcade]
+# The handler verifies each protected request through Supabase Auth.
+verify_jwt = false

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "npm:zod@4.6.7";
 import { createRankedState, isRankedState, moveRanked, projectRanked, RankedMoveError } from "./ranked-games.js";
 
 const uuid = z.uuid();
@@ -57,93 +57,85 @@ const publicRun = z.object({
   cards: z.array(z.object({ id: number.max(9), word: z.string().nullable(), matched: z.boolean(), hinted: z.boolean() })).optional(),
 });
 
-export function mountRankedRoutes(router, { rpc, fail, logError }) {
-  function projectResult(res, value, run) {
+export function mountRankedRoutes(router, { ArcadeError, logError }) {
+  function projectResult(json, value, run) {
     const parsed = publicRun.safeParse({ ...value, studyActive: run.studyActive, hintAllowed: run.hintAllowed });
-    if (parsed.success) return res.json({ ...parsed.data, serverNow: Date.now() });
+    if (parsed.success) return json({ ...parsed.data, serverNow: Date.now() });
     logError("Unexpected ranked arcade projection");
-    return fail(res, 503, "Arcade storage returned an unexpected response.");
+    throw new ArcadeError(503, "Arcade storage returned an unexpected response.");
   }
 
-  function getRun(res, value, expectedGame, expectedRun) {
+  function getRun(value, expectedGame, expectedRun) {
     const parsed = rankedEnvelope.safeParse(value);
     if (!parsed.success) {
       logError("Unexpected ranked arcade snapshot");
-      fail(res, 503, "Arcade storage returned an unexpected response.");
-      return null;
+      throw new ArcadeError(503, "Arcade storage returned an unexpected response.");
     }
     const run = parsed.data;
     if (run.gameId !== expectedGame || (expectedRun && run.runId !== expectedRun)) {
-      fail(res, 404, "The requested arcade record could not be found.");
-      return null;
+      throw new ArcadeError(404, "The requested arcade record could not be found.");
     }
     if (!isRankedState(run.state, expectedGame)) {
       logError("Ranked arcade snapshot uses an unsupported engine version", { gameId: expectedGame });
-      fail(res, 503, "This saved game is temporarily unavailable.");
-      return null;
+      throw new ArcadeError(503, "This saved game is temporarily unavailable.");
     }
     return run;
   }
 
-  router.post("/games/:gameId/start", async (req, res) => {
-    const parsed = startParams.safeParse(req.params);
-    const input = startBody.safeParse(req.body);
-    if (!parsed.success || !input.success) return fail(res, 400, "Invalid arcade request.");
+  router.post("/games/:gameId/start", async ({ params, body, rpc, json }) => {
+    const parsed = startParams.safeParse(params);
+    const input = startBody.safeParse(body);
+    if (!parsed.success || !input.success) throw new ArcadeError(400, "Invalid arcade request.");
     const { gameId } = parsed.data;
     const { requestId, mode } = input.data;
-    if (mode === "practice" && gameId !== 2) return fail(res, 400, "Practice mode is only available for Whack-a-Word.");
-    const data = await rpc(res, "pandiwasto_ranked_start", {
+    if (mode === "practice" && gameId !== 2) throw new ArcadeError(400, "Practice mode is only available for Whack-a-Word.");
+    const data = await rpc("pandiwasto_ranked_start", {
       game: gameId, request_id: requestId, state: createRankedState(gameId, mode), practice: mode === "practice",
     });
-    if (res.headersSent) return;
-    const run = getRun(res, data, gameId);
-    if (run) return projectResult(res, projectRanked(run), run);
+    const run = getRun(data, gameId);
+    return projectResult(json, projectRanked(run), run);
   });
 
-  router.get("/games/:gameId/:runId", async (req, res) => {
-    const parsed = gameParams.safeParse(req.params);
-    if (!parsed.success) return fail(res, 400, "Invalid arcade request.");
+  router.get("/games/:gameId/:runId", async ({ params, rpc, json }) => {
+    const parsed = gameParams.safeParse(params);
+    if (!parsed.success) throw new ArcadeError(400, "Invalid arcade request.");
     const { gameId, runId } = parsed.data;
-    const data = await rpc(res, "pandiwasto_ranked_state", { active_run: runId });
-    if (res.headersSent) return;
-    const run = getRun(res, data, gameId, runId);
-    if (run) return projectResult(res, projectRanked(run), run);
+    const data = await rpc("pandiwasto_ranked_state", { active_run: runId });
+    const run = getRun(data, gameId, runId);
+    return projectResult(json, projectRanked(run), run);
   });
 
-  router.post("/games/:gameId/:runId/move", async (req, res) => {
+  router.post("/games/:gameId/:runId/move", async ({ params: routeParams, body, rpc, json }) => {
     const now = Date.now();
-    const params = gameParams.safeParse(req.params);
-    const input = moveBody.safeParse(req.body);
-    if (!params.success || !input.success) return fail(res, 400, "Invalid arcade request.");
+    const params = gameParams.safeParse(routeParams);
+    const input = moveBody.safeParse(body);
+    if (!params.success || !input.success) throw new ArcadeError(400, "Invalid arcade request.");
     const { gameId, runId } = params.data;
     const { requestId, version, action } = input.data;
     const actionKey = { version, action };
-    const stored = await rpc(res, "pandiwasto_ranked_state", { active_run: runId, request_id: requestId, action: actionKey });
-    if (res.headersSent) return;
-    const run = getRun(res, stored, gameId, runId);
-    if (!run) return;
-    if (run.response != null) return projectResult(res, run.response, run);
-    if (run.status !== "active" || run.version !== version) return fail(res, 409, "The game state has changed. Reload the run before trying again.");
+    const stored = await rpc("pandiwasto_ranked_state", { active_run: runId, request_id: requestId, action: actionKey });
+    const run = getRun(stored, gameId, runId);
+    if (run.response != null) return projectResult(json, run.response, run);
+    if (run.status !== "active" || run.version !== version) throw new ArcadeError(409, "The game state has changed. Reload the run before trying again.");
 
     let next;
     try {
       next = moveRanked(run.state, action, now);
     } catch (error) {
-      if (error instanceof RankedMoveError) return fail(res, error.status, error.message);
+      if (error instanceof RankedMoveError) throw new ArcadeError(error.status, error.message);
       throw error;
     }
 
     const result = publicRun.parse(projectRanked({
       runId, version: version + 1, status: next.abandon ? "abandoned" : next.complete ? "completed" : "active", state: next.state,
     }, now));
-    const saved = await rpc(res, "pandiwasto_ranked_action", {
+    const saved = await rpc("pandiwasto_ranked_action", {
       active_run: runId, request_id: requestId, expected_version: version, action: actionKey,
       state: next.state, response: result, complete: next.complete, abandon: next.abandon,
       score: next.state.score, awarded_xp: next.complete ? next.state.xp : 0,
       observations: next.observations, hint_context: next.hintContext ?? null,
     });
-    if (res.headersSent) return;
-    const committed = getRun(res, saved, gameId, runId);
-    if (committed) return projectResult(res, committed.response, committed);
+    const committed = getRun(saved, gameId, runId);
+    return projectResult(json, committed.response, committed);
   });
 }

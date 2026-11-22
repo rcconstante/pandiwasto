@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "npm:zod@4.6.7";
 
 const reply = z.object({
   candidates: z.array(z.object({
@@ -7,6 +7,7 @@ const reply = z.object({
   })).min(1),
 });
 
+/** @param {{ key?: string, model?: string, fetcher?: typeof fetch }} [options] */
 export function createGeminiHintProvider({ key, model = "gemini-2.5-flash", fetcher = fetch } = {}) {
   if (!key || !/^[a-z0-9][a-z0-9.-]{1,79}$/i.test(model)) return undefined;
 

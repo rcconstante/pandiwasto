@@ -4,6 +4,7 @@ node_modules/
 .env.local
 dist/
 supabase_keys.txt
+supabase/.temp/
 
 
 # ========== FRONTEND ==========
