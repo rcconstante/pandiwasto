@@ -1,12 +1,10 @@
 import { useState, type FormEvent } from "react";
-import type { User } from "@supabase/supabase-js";
 import { Check, Save } from "lucide-react";
 import { AVATARS, GENDER_OPTIONS, avatarSrc, readGender, type ProfileDetails } from "@/data/dashboardProfile";
 import { authClient } from "@/lib/auth";
 
-export function DashboardProfileEditor({ profile, user, onSave }: {
+export function DashboardProfileEditor({ profile, onSave }: {
   profile: ProfileDetails;
-  user?: User;
   onSave: (profile: ProfileDetails) => void;
 }) {
   const [avatar, setAvatar] = useState(profile.avatar);
@@ -29,19 +27,17 @@ export function DashboardProfileEditor({ profile, user, onSave }: {
     setPending(true);
     setFeedback(null);
     try {
-      if (user) {
-        if (!authClient) throw new Error("Account access unavailable");
-        const { error } = await authClient.updateUser({ data: {
-          display_name: next.displayName,
-          first_name: next.firstName,
-          last_name: next.lastName,
-          gender: next.gender,
-          avatar: next.avatar,
-        } });
-        if (error) throw error;
-      }
+      if (!authClient) throw new Error("Account access unavailable");
+      const { error } = await authClient.updateUser({ data: {
+        display_name: next.displayName,
+        first_name: next.firstName,
+        last_name: next.lastName,
+        gender: next.gender,
+        avatar: next.avatar,
+      } });
+      if (error) throw error;
       onSave(next);
-      setFeedback({ message: user ? "Profile saved." : "Profile saved on this device." });
+      setFeedback({ message: "Profile saved." });
     } catch {
       setFeedback({ message: "We couldn’t save your profile. Try again.", error: true });
     } finally {

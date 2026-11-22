@@ -15,10 +15,9 @@ function createNickname() {
   return `${start} ${end} ${number}`;
 }
 
-export function SignInModal({ open, onOpenChange, onPreview, returnFocus }: {
+export function SignInModal({ open, onOpenChange, returnFocus }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPreview?: () => void;
   returnFocus: () => void;
 }) {
   const [signUp, setSignUp] = useState(false);
@@ -118,11 +117,6 @@ export function SignInModal({ open, onOpenChange, onPreview, returnFocus }: {
                 <button type="button" disabled={pending} onClick={() => changeMode(!signUp)}>{signUp ? "Sign in" : "Sign up"}</button>
               </p>
             </form>
-            {onPreview && (
-              <button className="pw-preview-access" type="button" disabled={pending} onClick={() => { changeMode(false); onPreview(); }}>
-                Preview the dashboard
-              </button>
-            )}
             {error && <p className="pw-auth-status" role="alert">{error}</p>}
             {message && <p className="pw-auth-status" role="status">{message}</p>}
           </div>

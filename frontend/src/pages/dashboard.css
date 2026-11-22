@@ -171,7 +171,6 @@
 }
 
 
-.pw-preview-access { display: block; margin: 14px auto 0; color: #315c43; text-decoration: underline; text-underline-offset: 3px; font-weight: 750; cursor: pointer; }
 
 .pwd-tab-trophy, .pwd-tab-profile { width: 27px; height: 27px; flex-shrink: 0; }
 .pwd-tab-trophy { color: #a66c11; fill: #ffe487; }

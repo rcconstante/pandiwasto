@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Star, Trophy, Users, X } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { supabaseClient } from "@/lib/auth";
-import { avatarSrc, readAvatar, type AvatarId } from "@/data/dashboardProfile";
+import { avatarSrc, readAvatar } from "@/data/dashboardProfile";
 import { MINIGAMES } from "@/data/landingData";
 
 const PAGE_SIZE = 20;
@@ -16,26 +16,12 @@ interface Ranking {
   level?: number | null;
 }
 
-export function DashboardRankings({ initialGameId, localPlayer }: {
-  initialGameId: number;
-  localPlayer?: { name: string; avatar: AvatarId; level: number; bestScores: Record<number, number> };
-}) {
+export function DashboardRankings({ initialGameId }: { initialGameId: number }) {
   const [gameId, setGameId] = useState(initialGameId);
   const [view, setView] = useState<"scores" | "players">("scores");
   const [page, setPage] = useState(0);
   const [retry, setRetry] = useState(0);
   const allPlayers = view === "players";
-  const localScore = localPlayer?.bestScores[gameId] ?? 0;
-  const localRows = localPlayer && (allPlayers || localScore > 0)
-    ? [{
-        player_name: localPlayer.name,
-        place: allPlayers ? null : 1,
-        score: allPlayers ? null : localScore,
-        is_you: true,
-        avatar: localPlayer.avatar,
-        level: localPlayer.level,
-      }]
-    : [];
 
   return (
     <section className="pwd-rankings" aria-labelledby="pwd-rankings-title">
@@ -56,22 +42,13 @@ export function DashboardRankings({ initialGameId, localPlayer }: {
           </select>
         </label>
       )}
-      {localPlayer ? (
-        <>
-          <p className="pwd-ranking-scope">Players and scores on this device</p>
-          {localRows.length ? <RankingTable key={`${view}:${gameId}`} rows={localRows} allPlayers={allPlayers} /> : (
-            <p className="pwd-ranking-empty" role="status">No scores saved for this game yet.</p>
-          )}
-        </>
-      ) : (
-        <RankingPage
-          key={`${view}:${gameId}:${page}:${retry}`}
-          gameId={allPlayers ? null : gameId}
-          page={page}
-          onPageChange={setPage}
-          onRetry={() => setRetry((count) => count + 1)}
-        />
-      )}
+      <RankingPage
+        key={`${view}:${gameId}:${page}:${retry}`}
+        gameId={allPlayers ? null : gameId}
+        page={page}
+        onPageChange={setPage}
+        onRetry={() => setRetry((count) => count + 1)}
+      />
     </section>
   );
 }

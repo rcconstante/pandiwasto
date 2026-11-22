@@ -1,10 +1,10 @@
-import { BookOpen, FlaskConical, Gamepad2, ServerOff } from "lucide-react";
+import { BookOpen, FlaskConical, Gamepad2, Trophy } from "lucide-react";
 
 const STATS = [
   { icon: Gamepad2, value: "7", label: "Filipino Minigames" },
   { icon: BookOpen, value: "10", label: "Lesson Topics" },
   { icon: FlaskConical, value: "3", label: "Planned Study Conditions" },
-  { icon: ServerOff, value: "7", label: "Games in Local Preview" },
+  { icon: Trophy, value: "7", label: "Game Leaderboards" },
 ];
 
 export function StatsBanner() {

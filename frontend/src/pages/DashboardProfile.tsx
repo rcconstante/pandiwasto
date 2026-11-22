@@ -3,8 +3,8 @@ import { avatarSrc, type ProfileDetails } from "@/data/dashboardProfile";
 
 export function DashboardProfile({ profile, level, xp, onEdit }: {
   profile: ProfileDetails;
-  level: number;
-  xp: number;
+  level: number | null;
+  xp: number | null;
   onEdit: () => void;
 }) {
   return (
@@ -15,8 +15,12 @@ export function DashboardProfile({ profile, level, xp, onEdit }: {
         <div>
           <h3>{profile.displayName || "Player"}</h3>
           <div className="pwd-profile-progress" aria-label="Player progress">
-            <span><Star size={18} aria-hidden="true" /> Level {level.toLocaleString()}</span>
-            <span><Sparkles size={18} aria-hidden="true" /> {xp.toLocaleString()} XP</span>
+            {level !== null && xp !== null ? (
+              <>
+                <span><Star size={18} aria-hidden="true" /> Level {level.toLocaleString()}</span>
+                <span><Sparkles size={18} aria-hidden="true" /> {xp.toLocaleString()} XP</span>
+              </>
+            ) : <p>Account progress is unavailable.</p>}
           </div>
         </div>
       </div>

@@ -30,7 +30,6 @@ export interface ProfileDetails {
   avatar: AvatarId;
 }
 
-const LOCAL_PROFILE_KEY = "pandiwasto:local-profile";
 const LEGACY_AVATARS = new Map<string, AvatarId>([
   ["pandiwasto-mascot.webp", "chick"],
   ["dashboard/games.webp", "puppy"],
@@ -50,8 +49,7 @@ export function randomAvatar() {
   return AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
 }
 
-function defaultAvatar(userId?: string) {
-  if (!userId) return randomAvatar();
+function defaultAvatar(userId: string) {
   let hash = 0;
   for (let index = 0; index < userId.length; index++) {
     hash = (Math.imul(hash, 31) + userId.charCodeAt(index)) >>> 0;
@@ -63,34 +61,13 @@ function readName(value: unknown, max: number, fallback = "") {
   return typeof value === "string" ? value.trim().slice(0, max) : fallback;
 }
 
-export function readProfile(user?: User): ProfileDetails {
-  let metadata = user?.user_metadata;
-  if (!user) {
-    try {
-      metadata = JSON.parse(localStorage.getItem(LOCAL_PROFILE_KEY) ?? "null");
-    } catch {
-      // The local account still works when storage is unavailable.
-    }
-  }
+export function readProfile(user: User): ProfileDetails {
+  const metadata = user.user_metadata;
   return {
-    displayName: readName(metadata?.display_name, 24, user ? "" : "Sunny Maya"),
+    displayName: readName(metadata?.display_name, 24),
     firstName: readName(metadata?.first_name, 40),
     lastName: readName(metadata?.last_name, 40),
     gender: readGender(metadata?.gender),
-    avatar: readAvatar(metadata?.avatar) ?? defaultAvatar(user?.id),
+    avatar: readAvatar(metadata?.avatar) ?? defaultAvatar(user.id),
   };
-}
-
-export function saveLocalProfile(profile: ProfileDetails) {
-  try {
-    localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify({
-      display_name: profile.displayName,
-      first_name: profile.firstName,
-      last_name: profile.lastName,
-      gender: profile.gender,
-      avatar: profile.avatar,
-    }));
-  } catch {
-    // The editable profile is still available for the current session.
-  }
 }

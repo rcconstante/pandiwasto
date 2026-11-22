@@ -6,7 +6,7 @@ PandiWasto is a Filipino morphology arcade. Players practice seven word-formatio
 
 ### Landing page
 
-![PandiWasto landing page with Filipino morphology topics and a preview of the arcade](docs/screenshots/landing.webp)
+![PandiWasto landing page with Filipino morphology topics](docs/screenshots/landing.webp)
 
 ### Arcade dashboard
 
@@ -35,7 +35,7 @@ npm run install-all
 npm run dev
 ```
 
-Open [PandiWasto](http://localhost:5173) and choose **Log in → Preview the dashboard** to play without setting up a database. Preview saves levels and scores in the browser. Run `npm run dev:frontend` to start only the frontend.
+Open [PandiWasto](http://localhost:5173) and choose **Log in** to sign in or create an account. Configure Supabase and the API using the steps below before testing gameplay. Run `npm run dev:frontend` to start only the frontend.
 
 ## Arcade games
 

@@ -4,11 +4,10 @@ import { authClient } from "@/lib/auth";
 import type { ProfileDetails } from "@/data/dashboardProfile";
 import { DashboardProfileEditor } from "./DashboardProfileEditor";
 
-export function DashboardSettings({ profile, onSaveProfile, user, onSignIn, onLeave, leaving }: {
+export function DashboardSettings({ profile, onSaveProfile, user, onLeave, leaving }: {
   profile: ProfileDetails;
   onSaveProfile: (profile: ProfileDetails) => void;
-  user?: User;
-  onSignIn: () => void;
+  user: User;
   onLeave: () => void;
   leaving: boolean;
 }) {
@@ -16,7 +15,7 @@ export function DashboardSettings({ profile, onSaveProfile, user, onSignIn, onLe
   const [feedback, setFeedback] = useState<{ message: string; error?: boolean } | null>(null);
 
   async function updateAccount(attributes: UserAttributes, message: string) {
-    if (!authClient || !user || pending) return false;
+    if (!authClient || pending) return false;
     setPending(true);
     setFeedback(null);
     try {
@@ -47,36 +46,27 @@ export function DashboardSettings({ profile, onSaveProfile, user, onSignIn, onLe
     <>
       <h2>Settings</h2>
       <div className="pwd-settings">
-        <DashboardProfileEditor profile={profile} user={user} onSave={onSaveProfile} />
+        <DashboardProfileEditor profile={profile} onSave={onSaveProfile} />
         <section aria-labelledby="pwd-account-heading">
-          <h3 id="pwd-account-heading">{user ? "Account & password" : "Local player account"}</h3>
-          {user ? (
-            <>
-              <p>Signed in as <strong>{user.email}</strong></p>
-              <details>
-                <summary>Change email</summary>
-                <form onSubmit={(event) => saveCredentials(event, "email")}>
-                  <label>New email <input name="value" type="email" autoComplete="email" required /></label>
-                  <button className="pwd-save" type="submit" disabled={pending}>Save email</button>
-                </form>
-              </details>
-              <details>
-                <summary>Change password</summary>
-                <form onSubmit={(event) => saveCredentials(event, "password")}>
-                  <label>Current password <input name="current" type="password" autoComplete="current-password" required /></label>
-                  <label>New password <input name="value" type="password" autoComplete="new-password" minLength={8} required /></label>
-                  <button className="pwd-save" type="submit" disabled={pending}>Save password</button>
-                </form>
-              </details>
-            </>
-          ) : (
-            <>
-              <p>Your profile, XP, and best scores are saved on this device.</p>
-              <button type="button" className="pwd-text-action" onClick={onSignIn}>Sign in to an online account</button>
-            </>
-          )}
+          <h3 id="pwd-account-heading">Account &amp; password</h3>
+          <p>Signed in as <strong>{user.email}</strong></p>
+          <details>
+            <summary>Change email</summary>
+            <form onSubmit={(event) => saveCredentials(event, "email")}>
+              <label>New email <input name="value" type="email" autoComplete="email" required /></label>
+              <button className="pwd-save" type="submit" disabled={pending}>Save email</button>
+            </form>
+          </details>
+          <details>
+            <summary>Change password</summary>
+            <form onSubmit={(event) => saveCredentials(event, "password")}>
+              <label>Current password <input name="current" type="password" autoComplete="current-password" required /></label>
+              <label>New password <input name="value" type="password" autoComplete="new-password" minLength={8} required /></label>
+              <button className="pwd-save" type="submit" disabled={pending}>Save password</button>
+            </form>
+          </details>
           <button type="button" className="pwd-save pwd-account-leave" disabled={leaving} onClick={onLeave}>
-            {user ? "Sign out" : "Back to landing page"}
+            Sign out
           </button>
         </section>
       </div>
