@@ -1,15 +1,41 @@
 # PandiWasto
 
-PandiWasto teaches Filipino morphology through seven arcade games. The app uses React, TypeScript, Vite, Express, and Supabase.
+PandiWasto is a Filipino morphology arcade. Players practice seven word-formation lessons, earn XP to unlock games, and compare scores on per-game leaderboards. The app estimates skill mastery using Bayesian Knowledge Tracing (BKT) and supports a study comparing three ways to deliver hints in Filipino.
+
+## Screenshots
+
+### Landing page
+
+![PandiWasto landing page with Filipino morphology topics and a preview of the arcade](docs/screenshots/landing.webp)
+
+### Arcade dashboard
+
+![Arcade dashboard with the Games, Lessons, Rankings, Profile, and Settings tabs and a carousel of game cards](docs/screenshots/arcade.webp)
+
+### Pop Goes the Word
+
+![Pop Goes the Word carnival game with the rules and start button](docs/screenshots/pop-goes-the-word.webp)
+
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, Radix UI, Lenis |
+| Backend | Node.js 24, Express, Zod |
+| Accounts and data | Supabase Auth, PostgreSQL, row-level security, SQL migrations |
+| Learning and hints | Bayesian Knowledge Tracing, authored Filipino hints, optional Google Gemini |
+| Verification | ESLint, TypeScript, Node.js test runner |
 
 ## Run locally
 
-1. Install Node.js LTS.
-2. Run `npm run install-all` from the repository root.
-3. Run `npm run dev` and open [PandiWasto](http://localhost:5173).
-4. Open **Log in → Preview the dashboard** to play with a local player profile.
+Install Node.js 24 and run these commands from the repository root.
 
-The frontend can run on its own with `npm run dev:frontend`. For the Express connection test, copy `backend/.env.example` to `backend/.env` and fill in the project’s Supabase values.
+```bash
+npm run install-all
+npm run dev
+```
+
+Open [PandiWasto](http://localhost:5173) and choose **Log in → Preview the dashboard** to play without setting up a database. Preview saves levels and scores in the browser. Run `npm run dev:frontend` to start only the frontend.
 
 ## Arcade games
 
@@ -34,7 +60,24 @@ The arcade has animated score updates, visual success and retry cues, and a soun
 3. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CLIENT_URL` in `backend/.env`. Use the service role only from the server. Enable email sign-in and add the landing page URL to the Supabase Auth redirect allowlist.
 4. Use Node.js 24 and start the app with `npm run dev` from the repository root. After confirming their email, players can sign in and earn account progress in all seven games.
 
-In Preview, all seven games save XP and scores in the browser. When account play is configured, the server validates moves before saving account XP, levels, and best scores. Signed-in Rankings shows generated aliases, avatar icons, levels, and validated scores. Whack-a-Word practice earns XP and stays out of Rankings. The header avatar opens the menu for Profile, Settings, and Sign out.
+The server validates account game moves before saving XP, levels, and best scores. Signed-in Rankings shows generated aliases, avatars, levels, and validated scores. Whack-a-Word practice earns XP and stays out of Rankings. The header avatar opens the menu for Profile, Settings, and Sign out.
+
+## Deploy
+
+1. Import the repository into Vercel. Choose the **Vite** preset, set the root directory to `frontend`, use `npm run build`, and publish `dist`.
+2. For account play, deploy `backend` as an HTTPS Node.js service with `npm start`. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CLIENT_URL`. Set `CLIENT_URL` to the exact Vercel frontend origin to allow API requests. Keep the service key and any `GEMINI_API_KEY` in the backend environment.
+3. In the Vercel project, set `VITE_API_URL` to the deployed API URL, and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Add the frontend URL to the Supabase Auth redirect allowlist and redeploy the frontend.
+4. Apply any pending Supabase migrations in order. Check `/api/health` on the backend, then confirm email sign-in, score saving, and Rankings on the deployed frontend.
+
+See the [Vercel guide for Vite](https://vercel.com/docs/frameworks/frontend/vite), [frontend environment template](frontend/.env.local.example), and [backend environment template](backend/.env.example).
+
+## Verify locally
+
+```bash
+npm run lint --prefix frontend
+npm run build --prefix frontend
+npm test --prefix backend
+```
 
 ## Administration and study
 
