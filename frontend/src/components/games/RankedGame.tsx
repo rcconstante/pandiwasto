@@ -5,6 +5,7 @@ import { Dialog } from "radix-ui";
 import { MINIGAMES } from "@/data/landingData";
 import { ArcadeRequestError, moveRankedGame, refreshRankedGame, startRankedGame, type RankedMove, type RankedSnapshot } from "@/lib/arcadeApi";
 import { ArcadeCue, ArcadeHearts, ArcadeScore } from "./ArcadeFeedback";
+import { HintRating } from "./HintRating";
 import { RoundFeedbackDialog } from "./RoundFeedbackDialog";
 import { waitForGameMotion } from "./gameMotion";
 import { useArcadeSound } from "./useArcadeSound";
@@ -87,6 +88,9 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
   gameId: number; personalBest: number; testPlay: boolean; onComplete: () => void; onExit: () => void;
 }) {
   const [run, setRun] = useState<RankedSnapshot | null>(null);
+  // The latest logged hint, so the learner can rate it.
+  const [lastHint, setLastHint] = useState<{ runId: string; id: number; level: number } | null>(null);
+  const [missedRound, setMissedRound] = useState<string | null>(null);
   const [selected, setSelected] = useState("");
   const [practice, setPractice] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,11 +120,14 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
   const remaining = deadline ? Math.max(0, deadline - time - offset) : null;
   const faceDown = Boolean(run?.hideAt && time + offset >= run.hideAt);
   const sprite = BASE + config.asset + ".webp";
-  const hintVisible = gameId !== 2 && run?.hintAllowed !== false && !inReview;
+  const hintVisible = run?.hintAllowed !== false && !inReview;
   const hintLevel = run?.hintLevel ?? 0;
   const selectedOption = options.find((choice) => choice.id === selected);
   const win = run?.feedback?.kind === "correct" || run?.feedback?.kind === "match" || run?.feedback?.kind === "board-complete";
-  const afterMiss = run?.feedback?.kind === "wrong" || run?.feedback?.kind === "mismatch";
+  // Whack-a-Word clears its feedback when the word comes back, so remember which round was missed.
+  const afterMiss = gameId === 2
+    ? Boolean(run) && missedRound === run!.runId + ":" + run!.round
+    : run?.feedback?.kind === "wrong" || run?.feedback?.kind === "mismatch";
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -143,14 +150,14 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
   }, [deadline, offset, playing, gameId, review, busy, retry, quit, error]);
 
   useEffect(() => {
-    if (gameId === 2 || !playing || locked || quit || error || !afterMiss || !run.studyActive || !run.hintAllowed || hintLevel >= 3) return;
+    if (!playing || locked || quit || error || !afterMiss || !run.studyActive || !run.hintAllowed || hintLevel >= 3) return;
     // One automatic hint per miss: hearts drop once for each wrong answer.
     const key = run.runId + ":" + run.round + ":" + run.hearts;
     if (automaticHint.current === key) return;
     const delay = run.hideAt ? Math.max(0, run.hideAt - Date.now() - offset) + 120 : 0;
     const timer = window.setTimeout(() => {
       automaticHint.current = key;
-      moveOnClock({ type: "hint" });
+      moveOnClock({ type: "hint", auto: true });
     }, delay);
     return () => window.clearTimeout(timer);
   }, [gameId, playing, locked, quit, error, afterMiss, run, offset, hintLevel]);
@@ -159,6 +166,9 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
     if (snapshot.serverNow !== undefined) setOffset(snapshot.serverNow - observedAt);
     setTime(observedAt);
     setRun(snapshot);
+    const kind = snapshot.feedback?.kind;
+    if (kind === "wrong" || kind === "timeout") setMissedRound(snapshot.runId + ":" + snapshot.round);
+    if (snapshot.hintId) setLastHint({ runId: snapshot.runId, id: snapshot.hintId, level: snapshot.hintLevel ?? 0 });
     setReview(showFeedback && snapshot.feedback !== null && snapshot.feedback?.kind !== "match");
     if (snapshot.round !== round || snapshot.status !== "active") setSelected("");
     switch (snapshot.feedback?.kind) {
@@ -411,6 +421,7 @@ export function RankedGame({ gameId, personalBest, testPlay, onComplete, onExit 
           </div>
           {run.feedback && !motion && !review && <p className="pop-feedback" role="status" key={run.version}><ArcadeCue tone={win ? "correct" : "retry"}>{run.feedback.text}</ArcadeCue></p>}
           {run.hint && <p className="ranked-hint" role="status" lang="fil">{run.hint}</p>}
+          {run.hint && lastHint?.runId === run.runId && lastHint.level === hintLevel && <HintRating runId={run.runId} hintId={lastHint.id} />}
         </div>}
 
         {run?.status === "completed" && !review && !motion && <section className="pop-results">

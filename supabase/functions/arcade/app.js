@@ -1,7 +1,7 @@
 import { z } from "npm:zod@4.6.7";
 import { mountAdminAccounts } from "./adminAccounts.js";
 import { mountAdminResearch } from "./adminResearch.js";
-import { createHintResolver, hintLadder } from "./hints.js";
+import { createHintResolver, hintLadder, masteryBand } from "./hints.js";
 import { mountRankedRoutes } from "./ranked-routes.js";
 import { mountTeacherRoutes } from "./teacher.js";
 
@@ -16,7 +16,7 @@ const answerBody = z.strictObject({
   expectedRound,
   response: z.string().regex(/^[A-Z]{0,32}$/),
 });
-const hintBody = z.strictObject({ expectedRound, level: z.number().int().min(1).max(3) });
+const hintBody = z.strictObject({ expectedRound, level: z.number().int().min(1).max(3), auto: z.boolean().optional() });
 const tapBody = z.strictObject({
   tapId: uuid,
   expectedRound,
@@ -165,6 +165,10 @@ function verifiedUserCache({ ttlMs = 20_000, limit = 2_000, now = Date.now } = {
       if (entries.size >= limit) entries.delete(entries.keys().next().value);
       entries.set(token, { user, until: now() + ttlMs });
     },
+    // shortcut: forgets only this instance's copy; another running instance keeps it for up to ttlMs.
+    forget(userId) {
+      for (const [token, entry] of entries) if (entry.user.id === userId) entries.delete(token);
+    },
   };
 }
 
@@ -288,21 +292,47 @@ export function createArcadeHandler({
   }
 
   const resolveHint = createHintResolver(hintProvider);
-  // The hint is already shown; a failed research log must not break play.
-  async function logHint(rpc, { runId, skillId, itemIndex, level, text, source, model, latencyMs, cacheHit }) {
+  // The hint is already shown; a failed research log must not break play. Returns the hint id for ratings.
+  async function logHint(rpc, { runId, skillId, itemIndex, level, text, source, model, latencyMs, cacheHit, trigger, promptVersion, inputTokens, outputTokens }) {
     try {
-      await rpc("pandiwasto_hint_log", {
+      const logged = await rpc("pandiwasto_hint_log", {
         active_run: runId, skill: skillId, item_index: itemIndex, hint_level: level, hint_text: text,
         hint_source: source, model_name: model, latency_ms: Math.round(latencyMs), cache_hit: cacheHit,
+        hint_trigger: trigger, prompt_version: promptVersion ?? null, input_tokens: inputTokens ?? null, output_tokens: outputTokens ?? null,
       });
+      return typeof logged?.hintId === "number" ? logged.hintId : undefined;
     } catch {
       logError("Hint log failed", { runId });
+      return undefined;
+    }
+  }
+  // The learner's mastery band, sent to the hint model. Skipped when no model is configured.
+  async function hintBand(rpc, skillId) {
+    if (!resolveHint.usesProvider) return undefined;
+    try {
+      return masteryBand((await rpc("pandiwasto_hint_mastery", { skill: skillId }))?.mastery);
+    } catch {
+      return undefined;
     }
   }
 
-  mountRankedRoutes(arcade, { ArcadeError, logError, resolveHint, logHint });
+  mountRankedRoutes(arcade, { ArcadeError, logError, resolveHint, logHint, hintBand });
+  arcade.post("/hints/rate", route({
+    name: "pandiwasto_hint_rate",
+    body: z.strictObject({ runId: uuid, hintId: z.number().int().positive(), helpful: z.boolean() }),
+    args: (_params, input) => ({ active_run: input.runId, hint_id: input.hintId, helpful: input.helpful }),
+    response: z.object({ helpful: z.boolean() }),
+  }));
+  const surveyResponses = z.record(z.string().regex(/^[a-z][a-z0-9_]{0,39}$/), z.number().int().min(1).max(5));
+  arcade.get("/survey/status", route({ name: "pandiwasto_survey_status", response: z.object({ submitted: z.boolean() }) }));
+  arcade.post("/survey/submit", route({
+    name: "pandiwasto_survey_submit",
+    body: z.strictObject({ responses: surveyResponses.refine((value) => Object.keys(value).length > 0 && Object.keys(value).length <= 20), comment: z.string().trim().max(1000).optional() }),
+    args: (_params, input) => ({ responses: input.responses, comment: input.comment ?? null }),
+    response: z.object({ submitted: z.literal(true) }),
+  }));
   mountAdminResearch(arcade, route);
-  mountAdminAccounts(arcade, { ArcadeError, route });
+  mountAdminAccounts(arcade, { ArcadeError, route, forgetUser: (userId) => verifiedUsers.forget(userId) });
   mountTeacherRoutes(arcade, route);
   arcade.get("/roles", route({ name: "pandiwasto_roles", response: roles }));
   // Admin check of the hint provider with a fixed sample item: no learner data is sent.
@@ -316,7 +346,8 @@ export function createArcadeHandler({
         word: "SUMAKAY", rule: "May gitlapi sa loob. Tingnan ang mga titik pagkatapos ng unang titik.",
         fact: "May gitlapi sa loob. Tingnan ang mga titik pagkatapos ng unang titik.", level: 1, wrong: [], signal: AbortSignal.timeout(8_000),
       });
-      return json({ configured: true, ok: true, model: hintProvider.model ?? null, text, latencyMs: Date.now() - started });
+      const reply = typeof text === "string" ? { text } : text;
+      return json({ configured: true, ok: true, model: hintProvider.model ?? null, text: reply?.text, latencyMs: Date.now() - started });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       const available = message.includes("404") ? await hintProvider.listModels?.().catch(() => undefined) : undefined;
@@ -374,9 +405,12 @@ export function createArcadeHandler({
       throw new ArcadeError(503, "Arcade storage returned an unexpected response.");
     }
     const { level, fresh, text, word, root, skill } = item.data;
-    const hint = await resolveHint({ text: hintLadder(1, level, text, [root]), fact: text, level, word, secrets: [root], cacheKey: "1:" + word });
-    if (fresh) await logHint(rpc, { runId: run.data.runId, skillId: skill, itemIndex: input.data.expectedRound, level, ...hint });
-    return json({ text: hint.text, level });
+    const band = level < 3 ? await hintBand(rpc, skill) : undefined;
+    const hint = await resolveHint({ text: hintLadder(1, level, text, [root]), fact: text, level, word, secrets: [root], cacheKey: "1:" + word, band });
+    const hintId = fresh
+      ? await logHint(rpc, { runId: run.data.runId, skillId: skill, itemIndex: input.data.expectedRound, level, trigger: input.data.auto ? "auto" : "requested", ...hint })
+      : undefined;
+    return json({ text: hint.text, level, ...(hintId ? { hintId } : {}) });
   });
   arcade.post("/pop/:runId/end", route({
     name: "pandiwasto_pop_end", params: runParams, body: endBody, response: snapshot,

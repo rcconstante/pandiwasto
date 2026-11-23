@@ -163,14 +163,26 @@ export const loadStudent = (classId: string, studentId: string, signal?: AbortSi
 export const startPopRun = (requestId: string) => arcadeRequest<PopRun>("pop/start", { requestId });
 export const tapPopRun = (runId: string, tap: { tapId: string; expectedRound: number; removed: number[] }) =>
   arcadeRequest<PopTap>(`pop/${runId}/tap`, tap);
-export const hintPopRun = (runId: string, expectedRound: number, level: number) =>
-  arcadeRequest<{ text: string; level: number }>(`pop/${runId}/hint`, { expectedRound, level });
+export const hintPopRun = (runId: string, expectedRound: number, level: number, auto = false) =>
+  arcadeRequest<{ text: string; level: number; hintId?: number }>(`pop/${runId}/hint`, { expectedRound, level, auto });
+export const rateHint = (runId: string, hintId: number, helpful: boolean) =>
+  arcadeRequest<{ helpful: boolean }>("hints/rate", { runId, hintId, helpful });
+export const loadSurveyStatus = (signal?: AbortSignal) => arcadeRequest<{ submitted: boolean }>("survey/status", undefined, signal);
+export const submitSurvey = (responses: Record<string, number>, comment: string) =>
+  arcadeRequest<{ submitted: true }>("survey/submit", { responses, ...(comment.trim() ? { comment: comment.trim() } : {}) });
+export const loadResearchSettings = (signal?: AbortSignal) =>
+  arcadeRequest<{ timeoutAsWrong: boolean; updatedAt: string }>("admin/settings", undefined, signal);
+export const updateResearchSettings = (timeoutAsWrong: boolean) =>
+  arcadeRequest<{ timeoutAsWrong: boolean; updatedAt: string }>("admin/settings/update", { timeoutAsWrong });
+export const saveStudyOptions = (options: { cohortId: string; hintThreshold: number; stallWindow: number; assignByClass: boolean; delayedAt: string | null }) =>
+  arcadeRequest<{ saved: true }>("admin/study/options", options);
 export const endPopRun = (runId: string) => arcadeRequest(`pop/${runId}/end`, {});
 
 export type RankedMove =
   | { type: "answer"; choice: string }
   | { type: "flip"; cardId: number }
-  | { type: "hint" | "next" | "timeout" | "finish" | "abandon" };
+  | { type: "hint"; auto?: boolean }
+  | { type: "next" | "timeout" | "finish" | "abandon" };
 
 export interface RankedSnapshot {
   gameId: number;
@@ -189,6 +201,7 @@ export interface RankedSnapshot {
   rejected?: string[];
   hint?: string | null;
   hintLevel?: number;
+  hintId?: number;
   studyActive?: boolean;
   hintAllowed?: boolean;
   word?: string;
@@ -216,5 +229,5 @@ export const refreshRankedGame = (game: RankedSnapshot) =>
   arcadeRequest<RankedSnapshot>(`games/${game.gameId}/${game.runId}`);
 
 export const getStudyState = (signal?: AbortSignal) => arcadeRequest<{
-  state: "unavailable" | "invited" | "scheduled" | "pretest" | "practice" | "posttest" | "completed" | "closed";
+  state: "unavailable" | "invited" | "scheduled" | "pretest" | "practice" | "posttest" | "delayedtest" | "completed" | "closed";
 }>("study/status", undefined, signal);

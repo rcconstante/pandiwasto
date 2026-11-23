@@ -19,3 +19,5 @@
 .pwd-study-layout .pwd-save { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
 .pwd-study-layout .pwd-save:disabled { opacity: .55; cursor: default; }
 .pwd-study-withdraw { margin-block: 10px; }
+.pwd-study-comment { display: grid; gap: 6px; }
+.pwd-study-comment textarea { width: 100%; min-height: 76px; padding: 9px 11px; border: 1px solid #c9d6bd; border-radius: 10px; font: inherit; resize: vertical; }

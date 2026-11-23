@@ -12,6 +12,9 @@ const WHACK_ROUNDS = 10;
 const ROUND_HEARTS = 3;
 const MAX_WHACK_HITS = 200;
 const MEMORY_PAUSE_MS = 1400;
+const HINT_READ_MS = 5000;
+// Level-1 nudge for Whack-a-Word: names all four kinds, so it never points at one answer.
+const WHACK_NUDGE = "Suriin ang salita: may panlapi ba ito, inuulit ba ang buo o bahagi nito, o binubuo ba ito ng dalawang salita?";
 const SKILLS = {
   2: "kayarian-ng-salita",
   4: "tambalan",
@@ -146,8 +149,10 @@ function getHintCard(state, board) {
 
 function withHintContext(state) {
   let hintContext = null;
-  if (state.phase === "playing" && (state.hintLevel ?? 0) < HINT_LEVELS && state.gameId !== 2) {
-    if (state.gameId === 4) {
+  if (state.phase === "playing" && (state.hintLevel ?? 0) < HINT_LEVELS) {
+    if (state.gameId === 2) {
+      hintContext = { skillId: SKILLS[2], itemIndex: state.round };
+    } else if (state.gameId === 4) {
       const board = state.boards[state.round];
       const index = getHintCard(state, board);
       const card = board.cards[index];
@@ -180,6 +185,21 @@ function whackMove(state, action, now) {
     return transition(nextWhack(state, now));
   }
   if (state.phase !== "playing") return reject();
+  if (action.type === "hint") {
+    const level = (state.hintLevel ?? 0) + 1;
+    if (level > HINT_LEVELS) return reject("No more hints for this word.");
+    const word = state.deck[state.deckIndex];
+    const type = WORD_TYPES.find(({ id }) => id === word.type);
+    const text = hintLadder(2, level, WHACK_NUDGE, [word.text]);
+    return transition({
+      ...state, hint: text, hintLevel: level,
+      // Reading a hint should not cost the timed answer window.
+      deadline: state.deadline === null ? null : Math.max(state.deadline, now + HINT_READ_MS),
+    }, {
+      hintContext: { skillId: SKILLS[2], itemIndex: state.round },
+      hintRequest: { level, text, fact: WHACK_NUDGE, secrets: [word.text, type.label], word: word.text, wrong: [], cacheKey: "2:" + word.text },
+    });
+  }
   if (action.type !== "timeout" && action.type !== "answer") return reject();
 
   const timedOut = state.deadline !== null && now >= state.deadline;
@@ -201,7 +221,7 @@ function whackMove(state, action, now) {
   };
   return transition(next, {
     complete,
-    observations: [observation(state, { skill: SKILLS[2], itemId: word.text, correct, firstAttempt: state.hearts === ROUND_HEARTS, hintUsed: false, timedOut }, now)],
+    observations: [observation(state, { skill: SKILLS[2], itemId: word.text, correct, firstAttempt: state.hearts === ROUND_HEARTS, hintUsed: Boolean(state.hint), timedOut }, now)],
   });
 }
 

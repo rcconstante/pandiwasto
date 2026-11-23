@@ -40,10 +40,28 @@ export function hintLadder(gameId, level, nudge, answerWords) {
   return examples.some((example) => leaks(example, answerWords)) ? rule : "Halimbawa: " + examples.join(" · ");
 }
 
+// Bump when the prompt or screening changes; every hint row records it.
+export const PROMPT_VERSION = "fil-hint-v3";
+
+const FILIPINO_WORDS = new Set(["ang", "ng", "sa", "mga", "na", "ay", "ito", "upang", "kung", "o", "at", "ba", "salita", "mo", "nito", "para"]);
+const ENGLISH_WORDS = new Set(["the", "and", "is", "of", "to", "you", "this", "that", "word", "with", "for", "are"]);
+
+/** Rough language screen: a hint must read as Filipino, not English. */
+export function looksFilipino(text) {
+  const words = text.toLocaleLowerCase("fil").split(/[^\p{L}-]+/u).filter(Boolean);
+  const filipino = words.filter((word) => FILIPINO_WORDS.has(word)).length;
+  const english = words.filter((word) => ENGLISH_WORDS.has(word)).length;
+  return filipino >= 2 && english <= filipino / 3;
+}
+
+/** Mastery band the hint model is told: low below 0.4, medium below 0.7, otherwise high. */
+export const masteryBand = (mastery) => mastery == null ? undefined : mastery < 0.4 ? "mababa" : mastery < 0.7 ? "katamtaman" : "mataas";
+
 /**
  * Rephrases authored hints with an optional provider. The provider sees only the public
- * exercise, the authored text and wrong choices; the answer stays here for screening.
- * @param {((input: object) => Promise<string | null>) & { model?: string } | undefined} provider
+ * exercise, the authored text, wrong choices and a mastery band; the answer stays here for screening.
+ * A provider returns the text, or { text, inputTokens, outputTokens }.
+ * @param {((input: object) => Promise<string | { text: string, inputTokens?: number, outputTokens?: number } | null>) & { model?: string } | undefined} provider
  */
 // The brief targets about 3 seconds for a hint.
 export function createHintResolver(provider, { hourlyLimit = 300, timeoutMs = 3_000, now = Date.now } = {}) {
@@ -53,8 +71,8 @@ export function createHintResolver(provider, { hourlyLimit = 300, timeoutMs = 3_
 
   // fact: the item's own reviewed nudge (for example "May gitlapi sa loob."), sent with every
   // level so the model cannot invent the wrong affix when the level text is a general rule.
-  return async ({ text, fact, level, word, wrong = [], secrets, cacheKey }) => {
-    const authored = { text, source: "authored", model: null, latencyMs: 0, cacheHit: false };
+  const resolve = async ({ text, fact, level, word, wrong = [], secrets, cacheKey, band }) => {
+    const authored = { text, source: "authored", model: null, latencyMs: 0, cacheHit: false, promptVersion: null };
     // Level 3 is the reviewed worked example; rewriting it tended to turn it into the answer's steps.
     if (!provider || !word || level >= HINT_LEVELS) return authored;
     const key = JSON.stringify([cacheKey, level, [...wrong].sort()]);
@@ -78,15 +96,21 @@ export function createHintResolver(provider, { hourlyLimit = 300, timeoutMs = 3_
           resolve(null);
         }, timeoutMs);
       });
-      const candidate = await Promise.race([provider({ word, rule: text, fact, level, wrong, signal: controller.signal }), deadline]);
-      const parsed = generatedHint.safeParse(candidate);
-      if (parsed.success && !leaks(parsed.data, secrets, word)) {
-        const result = { text: parsed.data, source: "ai", model: provider.model ?? null, latencyMs: now() - started, cacheHit: false };
+      const candidate = await Promise.race([provider({ word, rule: text, fact, level, wrong, band, signal: controller.signal }), deadline]);
+      const reply = typeof candidate === "string" ? { text: candidate } : candidate;
+      const parsed = generatedHint.safeParse(reply?.text);
+      const usable = parsed.success && !leaks(parsed.data, secrets, word) && looksFilipino(parsed.data);
+      if (usable) {
+        const result = {
+          text: parsed.data, source: "ai", model: provider.model ?? null, latencyMs: now() - started, cacheHit: false,
+          promptVersion: PROMPT_VERSION, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens,
+        };
         if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
         cache.set(key, result);
         return result;
       }
-      console.warn("Generated hint not used", { reason: controller.signal.aborted ? "timeout" : parsed.success ? "answer leak" : "invalid text", level });
+      const reason = controller.signal.aborted ? "timeout" : !parsed.success ? "invalid text" : looksFilipino(parsed.data) ? "answer leak" : "not Filipino";
+      console.warn("Generated hint not used", { reason, level });
     } catch (error) {
       // Gameplay stays available when a provider is unavailable.
       console.warn("Generated hint failed", { error: error instanceof Error ? error.message : "unknown", level });
@@ -95,4 +119,7 @@ export function createHintResolver(provider, { hourlyLimit = 300, timeoutMs = 3_
     }
     return { ...authored, latencyMs: now() - started };
   };
+  // Routes skip the mastery lookup when no provider would use it.
+  resolve.usesProvider = Boolean(provider);
+  return resolve;
 }

@@ -14,7 +14,7 @@ const classSummary = z.object({
   id: uuid, name: z.string(), teacherId: uuid.nullable(), teacherName: z.string().nullable(), students: z.number().int().nonnegative(),
 });
 
-export function mountAdminAccounts(router, { ArcadeError, route }) {
+export function mountAdminAccounts(router, { ArcadeError, route, forgetUser = () => {} }) {
   async function requireAdmin(rpc) {
     const roles = await rpc("pandiwasto_roles");
     if (roles?.admin !== true) throw new ArcadeError(403, "You do not have access to this action.");
@@ -63,8 +63,19 @@ export function mountAdminAccounts(router, { ArcadeError, route }) {
     await rpc("pandiwasto_admin_suspension", { target_account_id: input.data.accountId, suspend: input.data.suspended });
     const { error } = await authAdmin.updateUserById(input.data.accountId, { ban_duration: input.data.suspended ? "876000h" : "none" });
     if (error) authFailure(error);
+    // Drop any remembered sign-in so the suspension applies on the account's next request.
+    forgetUser(input.data.accountId);
     return json({ suspended: input.data.suspended });
   });
+
+  const settings = z.object({ timeoutAsWrong: z.boolean(), updatedAt: z.iso.datetime({ offset: true }) });
+  router.get("/admin/settings", route({ name: "pandiwasto_admin_settings", response: settings }));
+  router.post("/admin/settings/update", route({
+    name: "pandiwasto_admin_settings_update",
+    body: z.strictObject({ timeoutAsWrong: z.boolean() }),
+    args: (_params, input) => ({ timeout_as_wrong: input.timeoutAsWrong }),
+    response: settings,
+  }));
 
   const probability = z.number().min(0).max(1);
   router.get("/admin/skills", route({

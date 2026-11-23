@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Pencil, Sparkles } from "lucide-react";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
-import { checkHintProvider, loadSkills, updateSkill, type SkillParameters } from "@/lib/arcadeApi";
+import { checkHintProvider, loadResearchSettings, loadSkills, updateResearchSettings, updateSkill, type SkillParameters } from "@/lib/arcadeApi";
 import { formValue, useAdminAction, useRemote } from "./adminActions";
 import { LoadState, Modal, Notice, PageHeader, SkeletonTable } from "./StaffKit";
 
@@ -40,6 +40,29 @@ function HintCheck() {
   );
 }
 
+function ScoringRules() {
+  const settings = useRemote(loadResearchSettings, "research-settings");
+  const { busy, message, run } = useAdminAction();
+  const toggle = (timeoutAsWrong: boolean) => void run(async () => {
+    await updateResearchSettings(timeoutAsWrong);
+    settings.reload();
+    return timeoutAsWrong ? "Timed-out answers now count as wrong for mastery." : "Timed-out answers no longer change mastery.";
+  }, "Couldn’t save the setting.");
+  return (
+    <section className="st-card">
+      <h2 className="st-card-title">Mastery scoring</h2>
+      <p className="st-muted">First attempts update mastery, including hinted ones (they are flagged for analysis). Choose how a Whack-a-Word timeout counts.</p>
+      {settings.state.status !== "ready" ? <LoadState status={settings.state.status} what="scoring settings" onRetry={settings.reload} /> : (
+        <label className="st-check">
+          <input type="checkbox" checked={settings.state.data.timeoutAsWrong} disabled={busy || settings.state.refreshing} onChange={(event) => toggle(event.target.checked)} />
+          Count timeouts as wrong answers
+        </label>
+      )}
+      {message && <div className="st-card-notice"><Notice message={message} /></div>}
+    </section>
+  );
+}
+
 export function AdminSettings() {
   const [editing, setEditing] = useState<SkillParameters | null>(null);
   const skills = useRemote(loadSkills, "skills");
@@ -63,7 +86,7 @@ export function AdminSettings() {
 
   return (
     <>
-      <PageHeader title="Settings" description="BKT parameters, hint policy, and the AI hint provider." />
+      <PageHeader title="Settings" description="BKT parameters, mastery scoring, hint policy, and the AI hint provider." />
       {editing === null && <Notice message={message} />}
 
       <section className="st-card">
@@ -102,12 +125,13 @@ export function AdminSettings() {
         <section className="st-card">
           <h2 className="st-card-title">Hint policy</h2>
           <ul className="st-policy">
-            <li><strong>Group A</strong> A hint after a wrong answer when mastery is below 0.70, or has stalled below the mastery threshold over the last three updates.</li>
+            <li><strong>Group A</strong> A hint after a wrong answer when mastery is below the study’s threshold (default 0.70), or has stalled below mastery over the study’s window (default three updates). Set both per study.</li>
             <li><strong>Group B</strong> A hint after two misses in a row on the same skill.</li>
             <li><strong>Group C</strong> No hints.</li>
             <li><strong>All groups</strong> At most four hints per run. Levels 1–2 are AI-rephrased from reviewed text; level 3 is the lesson example.</li>
           </ul>
         </section>
+        <ScoringRules />
         <HintCheck />
       </div>
 

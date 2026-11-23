@@ -5,7 +5,8 @@ const date = z.iso.datetime({ offset: true });
 const count = z.number().int().nonnegative();
 const choice = z.string().trim().min(1).max(120);
 const phase = z.enum(["pre", "post"]);
-const dataset = z.enum(["assessment", "attempt", "hint", "parameter"]);
+const answeredPhase = z.enum(["pre", "post", "delayed"]);
+const dataset = z.enum(["assessment", "attempt", "hint", "parameter", "survey"]);
 const skillId = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const emptyBody = z.strictObject({});
 const playerLookup = z.string().trim().pipe(z.union([uuid, z.string().regex(/^Player [0-9a-f]{10}$/i)]));
@@ -21,7 +22,7 @@ const cohortBody = z.strictObject({
   && Date.parse(value.posttestAt) < Date.parse(value.closesAt), "Enter dates in study order.");
 
 const studyState = z.object({
-  state: z.enum(["unavailable", "invited", "scheduled", "pretest", "practice", "posttest", "completed", "closed"]),
+  state: z.enum(["unavailable", "invited", "scheduled", "pretest", "practice", "posttest", "delayedtest", "completed", "closed"]),
   title: z.string().optional(),
   information: z.string().optional(),
   protocol: z.string().optional(),
@@ -29,12 +30,14 @@ const studyState = z.object({
   posttestAt: date.optional(),
   closesAt: date.optional(),
   canWithdraw: z.boolean().optional(),
+  surveyDue: z.boolean().optional(),
+  delayedAt: date.optional(),
   questions: z.array(z.object({ id: uuid, prompt: z.string(), choices: z.array(z.string()).length(3) })).max(40).optional(),
 });
 
 const exportIdentity = z.object({ participantId: uuid, condition: z.enum(["A", "B", "C"]) });
 const assessments = exportIdentity.extend({
-  phase, points: count, total: count, skills: z.record(skillId, z.object({ points: count, total: count })).optional(),
+  phase: answeredPhase, points: count, total: count, skills: z.record(skillId, z.object({ points: count, total: count })).optional(),
 });
 const probability = z.number().min(0).max(1);
 const parameters = z.object({
@@ -72,6 +75,16 @@ const hints = exportIdentity.extend({
   cacheHit: z.boolean(),
   text: z.string(),
   recordedAt: date,
+  trigger: z.enum(["auto", "requested"]).nullish(),
+  promptVersion: z.string().nullish(),
+  inputTokens: count.nullish(),
+  outputTokens: count.nullish(),
+  helpful: z.boolean().nullish(),
+});
+const surveys = exportIdentity.extend({
+  responses: z.record(z.string(), z.number().int().min(1).max(5)),
+  comment: z.string().nullable(),
+  submittedAt: date,
 });
 
 export function mountAdminResearch(router, route) {
@@ -90,7 +103,22 @@ export function mountAdminResearch(router, route) {
     response: z.object({ cohorts: z.array(z.object({
       id: uuid, title: z.string(), protocol: z.string(), opensAt: date, posttestAt: date, closesAt: date,
       preCount: count, postCount: count, participants: count, sealed: z.boolean(),
+      delayedAt: date.nullish(), hintThreshold: z.number().gt(0).lt(1).optional(), stallWindow: count.optional(),
+      assignByClass: z.boolean().optional(), surveys: count.optional(),
     })).max(100) }),
+  }));
+
+  router.post("/admin/study/options", route({
+    name: "pandiwasto_admin_study_options",
+    body: z.strictObject({
+      cohortId: uuid, hintThreshold: z.number().gt(0).lt(1), stallWindow: z.number().int().min(2).max(10),
+      assignByClass: z.boolean(), delayedAt: date.nullable(),
+    }),
+    args: (_params, input) => ({
+      study_id: input.cohortId, hint_threshold: input.hintThreshold, stall_window: input.stallWindow,
+      assign_by_class: input.assignByClass, delayed_at: input.delayedAt,
+    }),
+    response: z.object({ saved: z.literal(true) }),
   }));
 
   router.post("/admin/study/create", route({
@@ -127,7 +155,7 @@ export function mountAdminResearch(router, route) {
     name: "pandiwasto_admin_study_export",
     body: z.strictObject({ cohortId: uuid, dataset, page: z.number().int().min(0).max(10000) }),
     args: (_params, input) => ({ study_id: input.cohortId, dataset: input.dataset, page_number: input.page }),
-    response: z.object({ records: z.array(z.union([hints, attempts, parameters, assessments])).max(200), hasMore: z.boolean() }),
+    response: z.object({ records: z.array(z.union([hints, attempts, surveys, parameters, assessments])).max(200), hasMore: z.boolean() }),
   }));
 
   router.get("/study/status", route({ name: "pandiwasto_study_status", response: studyState }));
@@ -136,7 +164,7 @@ export function mountAdminResearch(router, route) {
   }));
   router.post("/study/withdraw", route({ name: "pandiwasto_study_withdraw", body: emptyBody, response: studyState }));
   router.post("/study/assessment/:phase/submit", route({
-    name: "pandiwasto_study_submit", params: z.strictObject({ phase }),
+    name: "pandiwasto_study_submit", params: z.strictObject({ phase: answeredPhase }),
     body: z.strictObject({ choices: z.array(z.strictObject({ itemId: uuid, choice: z.number().int().min(0).max(2) })).min(1).max(40) })
       .refine(({ choices }) => new Set(choices.map((item) => item.itemId)).size === choices.length),
     args: (params, input) => ({ form: params.phase, responses: input.choices }),

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { type BktParams, bktUpdate, fitGrid, isMastered, MASTERY_THRESHOLD, pCorrect, posterior, replay } from "./bkt.ts";
+import { auc, type BktParams, bktUpdate, crossValidate, fitGrid, isMastered, MASTERY_THRESHOLD, pCorrect, posterior, replay } from "./bkt.ts";
 
 // Seeded values from the arcade_skills migrations.
 const SALITANG_UGAT: BktParams = { initial: 0.25, learn: 0.15, guess: 0.10, slip: 0.10 };
@@ -107,6 +107,20 @@ Deno.test("grid fitting recovers simulated parameters within the grid tolerance"
   assert.ok(Math.abs(fit.learn - truth.learn) <= 0.1, `P(T) ${fit.learn}`);
   assert.ok(Math.abs(fit.slip - truth.slip) <= 0.1 && fit.slip < 0.3, `P(S) ${fit.slip}`);
   assert.throws(() => fitGrid([], 0.25), RangeError);
+});
+
+Deno.test("AUC ranks predictions and cross-validation beats the mean baseline", () => {
+  assert.equal(auc([{ correct: false, predicted: 0.2 }, { correct: true, predicted: 0.8 }]), 1);
+  assert.equal(auc([{ correct: true, predicted: 0.5 }, { correct: false, predicted: 0.5 }]), 0.5);
+  assert.throws(() => auc([{ correct: true, predicted: 0.5 }]), RangeError);
+  const truth: BktParams = { initial: 0.2, learn: 0.2, guess: 0.25, slip: 0.1 };
+  const next = random(7);
+  const sequences = Array.from({ length: 100 }, () => simulate(truth.learn, truth, 15, next));
+  const result = crossValidate(sequences, truth.guess, 5, 0.1);
+  assert.equal(result.answers, 1500);
+  assert.ok(result.auc > 0.7, `AUC ${result.auc}`);
+  assert.ok(result.rmse < result.baselineRmse, `RMSE ${result.rmse} vs ${result.baselineRmse}`);
+  assert.throws(() => crossValidate(sequences.slice(0, 3), 0.25, 5), RangeError);
 });
 
 // Simulated students: hidden true knowledge, answers drawn through guess and slip.

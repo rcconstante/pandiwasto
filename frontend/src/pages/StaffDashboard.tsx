@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { BarChart3, ChevronDown, FlaskConical, GraduationCap, LayoutDashboard, LogOut, SlidersHorizontal, Trophy, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, ChevronDown, FlaskConical, GraduationCap, LayoutDashboard, LogOut, MessageSquareText, SlidersHorizontal, Trophy, Users, type LucideIcon } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { authClient } from "@/lib/auth";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -11,16 +11,18 @@ import { AdminSettings } from "./AdminSettings";
 import { AdminOverview, AdminScores, AdminStudy } from "./DashboardAdmin";
 import { DashboardTeacher } from "./DashboardTeacher";
 import { StaffRankings } from "./StaffRankings";
+import { TeacherFeedback } from "./TeacherFeedback";
 import { Avatar, Notice } from "./StaffKit";
 import "./dashboard.css";
 import "./staff.css";
 
-type SectionId = "overview" | "progress" | "classes" | "rankings" | "accounts" | "study" | "settings";
+type SectionId = "overview" | "progress" | "classes" | "rankings" | "accounts" | "study" | "settings" | "feedback";
 interface Section {
   id: SectionId;
   label: string;
   icon: LucideIcon;
   adminOnly: boolean;
+  teacherOnly?: boolean;
 }
 
 const SECTIONS: Section[] = [
@@ -32,7 +34,10 @@ const SECTIONS: Section[] = [
   // Study stays admin-only: it holds consent records and blinded group assignments.
   { id: "study", label: "Study", icon: FlaskConical, adminOnly: true },
   { id: "settings", label: "Settings", icon: SlidersHorizontal, adminOnly: true },
+  { id: "feedback", label: "Feedback", icon: MessageSquareText, adminOnly: false, teacherOnly: true },
 ];
+
+const visibleSections = (admin: boolean) => SECTIONS.filter((section) => admin ? !section.teacherOnly : !section.adminOnly);
 
 // The open section lives in the URL (?section=accounts) so reloads and shared links keep it.
 function sectionFromUrl(sections: Section[]) {
@@ -42,7 +47,7 @@ function sectionFromUrl(sections: Section[]) {
 
 /** Dashboard for teachers and admins: no games, levels, or greetings. */
 export function StaffDashboard({ user, admin, onHome }: { user: User; admin: boolean; onHome: () => void }) {
-  const sections = SECTIONS.filter((section) => admin || !section.adminOnly);
+  const sections = visibleSections(admin);
   const [active, setActive] = useState<SectionId>(() => sectionFromUrl(sections));
   const [signOutError, setSignOutError] = useState(false);
   const profile = readProfile(user);
@@ -51,7 +56,7 @@ export function StaffDashboard({ user, admin, onHome }: { user: User; admin: boo
   const role = admin ? "Admin" : "Teacher";
 
   useEffect(() => {
-    const sync = () => setActive(sectionFromUrl(SECTIONS.filter((section) => admin || !section.adminOnly)));
+    const sync = () => setActive(sectionFromUrl(visibleSections(admin)));
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, [admin]);
@@ -116,6 +121,7 @@ export function StaffDashboard({ user, admin, onHome }: { user: User; admin: boo
         {active === "accounts" && <AdminAccounts />}
         {active === "study" && <AdminStudy />}
         {active === "settings" && <AdminSettings />}
+        {active === "feedback" && <TeacherFeedback />}
       </main>
     </div>
   );

@@ -106,3 +106,51 @@ export function replay(answers: readonly boolean[], p: BktParams, start = p.init
     return step;
   });
 }
+
+/** Area under the ROC curve (ties count half); 0.5 is chance. */
+export function auc(points: readonly { correct: boolean; predicted: number }[]): number {
+  const positives = points.filter((point) => point.correct).length;
+  const negatives = points.length - positives;
+  if (!positives || !negatives) throw new RangeError("AUC needs both correct and wrong answers.");
+  const sorted = [...points].sort((a, b) => a.predicted - b.predicted);
+  let rankSum = 0;
+  for (let start = 0; start < sorted.length;) {
+    let end = start;
+    while (end < sorted.length && sorted[end].predicted === sorted[start].predicted) end += 1;
+    const rank = (start + 1 + end) / 2;
+    for (let index = start; index < end; index += 1) if (sorted[index].correct) rankSum += rank;
+    start = end;
+  }
+  return (rankSum - positives * (positives + 1) / 2) / (positives * negatives);
+}
+
+export interface CrossValidation {
+  folds: number;
+  answers: number;
+  auc: number;
+  rmse: number;
+  /** RMSE of always predicting the training folds' mean correctness. */
+  baselineRmse: number;
+}
+
+/** Student-level k-fold cross-validation: fit on k-1 folds, predict the held-out students. */
+export function crossValidate(sequences: readonly (readonly boolean[])[], guess: number, folds = 5, step = 0.02): CrossValidation {
+  if (folds < 2 || sequences.length < folds) throw new RangeError(`Need at least ${folds} students for ${folds}-fold validation.`);
+  const held: { correct: boolean; predicted: number }[] = [];
+  let baselineSquared = 0;
+  for (let fold = 0; fold < folds; fold += 1) {
+    const train = sequences.filter((_, index) => index % folds !== fold);
+    const test = sequences.filter((_, index) => index % folds === fold);
+    const params = fitGrid(train, guess, step);
+    const trainAnswers = train.flat();
+    const mean = trainAnswers.filter(Boolean).length / trainAnswers.length;
+    for (const sequence of test) {
+      for (const { correct, predicted } of replay(sequence, params)) {
+        held.push({ correct, predicted });
+        baselineSquared += (Number(correct) - mean) ** 2;
+      }
+    }
+  }
+  const squared = held.reduce((total, point) => total + (Number(point.correct) - point.predicted) ** 2, 0);
+  return { folds, answers: held.length, auc: auc(held), rmse: Math.sqrt(squared / held.length), baselineRmse: Math.sqrt(baselineSquared / held.length) };
+}

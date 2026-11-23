@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createArcadeHandler } from "./app.js";
-import { createHintResolver, hintLadder } from "./hints.js";
+import { createHintResolver, hintLadder, looksFilipino, masteryBand, PROMPT_VERSION } from "./hints.js";
 
 const player = "87e015a2-d2de-4fd0-8bc2-746cbb27f309";
 const run = "4947bafb-8fcb-41ec-bc0f-6f59731fbba0";
@@ -187,7 +187,10 @@ Deno.test("Hints default to the authored rule and guard direct answers from a pr
   let calls = 0;
   const provider = Object.assign(async () => { calls++; return "Hanapin ang idinagdag na titik."; }, { model: "test-model" });
   const resolve = createHintResolver(provider, { hourlyLimit: 1 });
-  assert.deepEqual({ ...(await resolve(request)), latencyMs: 0 }, { text: "Hanapin ang idinagdag na titik.", source: "ai", model: "test-model", latencyMs: 0, cacheHit: false });
+  assert.deepEqual({ ...(await resolve(request)), latencyMs: 0 }, {
+    text: "Hanapin ang idinagdag na titik.", source: "ai", model: "test-model", latencyMs: 0, cacheHit: false,
+    promptVersion: PROMPT_VERSION, inputTokens: undefined, outputTokens: undefined,
+  });
   assert.equal((await resolve(request)).cacheHit, true);
   assert.equal((await resolve({ ...request, level: 2 })).source, "authored", "the hourly cap falls back to authored text");
   assert.equal(calls, 1);
@@ -215,27 +218,43 @@ Deno.test("The hint ladder moves from nudge to rule to examples without the answ
   assert.equal((await failing({ text: "x", level: 1, word: "w", secrets, cacheKey: "c" })).source, "authored", "provider errors fall back");
   const leaked = createHintResolver(async () => "Gamitin ang -in dito.");
   assert.equal((await leaked({ text: "x", level: 1, word: "w", secrets, cacheKey: "b" })).source, "authored");
+  const english = createHintResolver(async () => "Look for the letters that were added to the word.");
+  assert.equal((await english({ text: "x", level: 1, word: "w", secrets, cacheKey: "e" })).source, "authored", "English replies fall back");
+  assert.ok(looksFilipino("Suriin ang mga titik sa hulihan ng salita."));
+  assert.ok(!looksFilipino("Check the last letters of the word."));
+  const counted = await createHintResolver(async () => ({ text: "Hanapin ang hulapi sa dulo ng salita.", inputTokens: 90, outputTokens: 14 }))(
+    { text: "x", level: 1, word: "w", secrets, cacheKey: "t" });
+  assert.deepEqual([counted.inputTokens, counted.outputTokens], [90, 14], "token counts are kept for the log");
+  assert.deepEqual([masteryBand(0.2), masteryBand(0.5), masteryBand(0.9), masteryBand(undefined)], ["mababa", "katamtaman", "mataas", undefined]);
 });
 
 Deno.test("Pop hints request a ladder level, log fresh hints, and send no account data to the provider", async () => {
   const item = { level: 2, fresh: true, text: "May gitlapi.", word: "SUMAKAY", root: "SAKAY", skill: "salitang-ugat" };
   const calls = [];
   const fetch = requestFor({
-    supabase: { auth: { getUser: async () => authUser() }, rpc: async (name, args) => { calls.push([name, args]); return { data: name === "pandiwasto_pop_hint" ? item : null }; } },
+    supabase: { auth: { getUser: async () => authUser() }, rpc: async (name, args) => {
+      calls.push([name, args]);
+      const data = { pandiwasto_pop_hint: item, pandiwasto_hint_mastery: { mastery: 0.35 }, pandiwasto_hint_log: { hintId: 41 } }[name];
+      return { data: data ?? null };
+    } },
     hintProvider: async (content) => {
-      assert.deepEqual(Object.keys(content).sort(), ["fact", "level", "rule", "signal", "word", "wrong"]);
+      assert.deepEqual(Object.keys(content).sort(), ["band", "fact", "level", "rule", "signal", "word", "wrong"]);
       assert.equal(content.level, 2);
+      assert.equal(content.band, "mababa");
       return "Alalahanin ang ugat ng salita.";
     },
   });
   assert.equal((await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0, level: 4 }))).status, 400);
-  const reply = await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0, level: 2 }));
+  const reply = await fetch(`/arcade/pop/${run}/hint`, post({ expectedRound: 0, level: 2, auto: true }));
   assert.equal(reply.status, 200);
-  assert.deepEqual(await reply.json(), { text: "Alalahanin ang ugat ng salita.", level: 2 });
+  assert.deepEqual(await reply.json(), { text: "Alalahanin ang ugat ng salita.", level: 2, hintId: 41 });
   assert.deepEqual(calls[0], ["pandiwasto_pop_hint", { active_run: run, expected_round: 0, requested_level: 2, account_id: player }]);
-  assert.equal(calls[1][0], "pandiwasto_hint_log");
-  assert.equal(calls[1][1].hint_source, "ai");
-  assert.equal(calls[1][1].skill, "salitang-ugat");
+  assert.deepEqual(calls[1], ["pandiwasto_hint_mastery", { skill: "salitang-ugat", account_id: player }]);
+  assert.equal(calls[2][0], "pandiwasto_hint_log");
+  assert.equal(calls[2][1].hint_source, "ai");
+  assert.equal(calls[2][1].hint_trigger, "auto");
+  assert.equal(calls[2][1].prompt_version, PROMPT_VERSION);
+  assert.equal(calls[2][1].skill, "salitang-ugat");
 });
 
 Deno.test("Suspended accounts cannot use the arcade", async () => {

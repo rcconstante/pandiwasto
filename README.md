@@ -101,17 +101,17 @@ deno test --config supabase/functions/arcade/deno.json supabase/functions/arcade
 
 ## Administration and study
 
-- **Admin** creates accounts with a temporary password, sets each account's role (student, teacher, or admin), and suspends or restores accounts. Admins create classes, assign a teacher, and add students by email, alias, or account ID. Admins also moderate scores, configure study cohorts and assessments, invite participants, and export assessments, attempts, and hints. Every role change and suspension is logged.
+- **Admin** creates accounts with a temporary password, sets each account's role (student, teacher, or admin), and suspends or restores accounts. Admins create classes, assign a teacher, and add students by email, alias, or account ID. Admins also moderate scores, configure study cohorts and assessments, invite participants, set each cohort's hint rules, class-level assignment, and follow-up assessment date, and export assessments, attempts, hints, parameter versions, and survey responses. Every role change and suspension is logged.
 - **Classes** (teachers and admins) shows a student × skill table of BKT mastery P(L), answer counts, and mastered skills, with a CSV download. Opening a student shows level, XP, best scores, hints shown, and the latest 50 answers with mastery before and after each one. Teachers see only their own classes, and the study condition stays hidden.
-- **Study** shows invitations, participation and withdrawal controls, assessments, and the scheduled practice window. The database assigns conditions privately and excludes withdrawn participants from future research exports.
-- **Mastery** in Lessons is based on recorded first unaided answers across the ten configured skills and marks a skill as mastered at P(L) ≥ 0.95.
-- **Hints** follow a three-level ladder in every game except Whack-a-Word: a nudge, the lesson rule, then lesson examples that never show the item's answer. With `GEMINI_API_KEY` set, the server rephrases each level and falls back to the authored text on timeout, leak, cap, or failure. Every hint is logged with its level, source, model, latency, and the learner's mastery.
+- **Study** shows invitations, participation and withdrawal controls, assessments (pre, post, and an optional follow-up), the scheduled practice window, and a short usability survey after the post-assessment. Teachers answer their own survey under **Feedback**. The database assigns conditions privately and excludes withdrawn participants from future research exports.
+- **Mastery** in Lessons is based on recorded first attempts (hinted ones are flagged; timeouts count only when Admin → Settings says so) across the ten configured skills and marks a skill as mastered at P(L) ≥ 0.95.
+- **Hints** follow a three-level ladder in every game: a nudge, the lesson rule, then lesson examples that never show the item's answer. In Whack-a-Word a hint adds five seconds to the answer window. With `GEMINI_API_KEY` set, the server rephrases levels 1–2 for the learner's mastery band and falls back to the authored text on timeout, leak, non-Filipino output, cap, or failure. Every hint is logged with its level, trigger, source, model, prompt version, tokens, latency, the learner's mastery, and whether the learner found it helpful.
 
 ### BKT engine
 
 - `supabase/functions/arcade/bkt.ts` holds the tested reference formulas. The database applies the same update in one function, `pandiwasto_private.bkt_apply`.
 - P(L0) is the learner's pretest subscore for the skill, clamped to [0.1, 0.9], or 0.3 without one. P(G) is each game's chance level.
 - Every change to a skill's parameters raises its `param_version`, and every scored answer records that version.
-- After a pilot, fit a skill from Admin "Game attempts" exports: `deno run --allow-read scripts/fit-bkt.ts --skill asimilasyon --guess 0.33 page-1.json`.
+- After a pilot, fit a skill from Admin "Game attempts" exports: `deno run --allow-read scripts/fit-bkt.ts --skill asimilasyon --guess 0.33 page-1.json`. Add `--folds 5` for held-out AUC and RMSE.
 
 The [implementation plan](IMPLEMENTATION.md) lists the database rollout, backend and admin interfaces, per-game validation work, security tests, and research dependencies. See also the [technical draft](Technical-draft) and [research brief](skill.md).

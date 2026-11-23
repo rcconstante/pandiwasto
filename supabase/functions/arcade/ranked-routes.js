@@ -13,7 +13,7 @@ const startBody = z.strictObject({
 const actionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("answer"), choice: z.string().min(1).max(80) }),
   z.strictObject({ type: z.literal("flip"), cardId: number.max(9) }),
-  z.strictObject({ type: z.literal("hint") }),
+  z.strictObject({ type: z.literal("hint"), auto: z.boolean().optional() }),
   z.strictObject({ type: z.literal("next") }),
   z.strictObject({ type: z.literal("timeout") }),
   z.strictObject({ type: z.literal("finish") }),
@@ -58,10 +58,10 @@ const publicRun = z.object({
   cards: z.array(z.object({ id: number.max(9), word: z.string().nullable(), matched: z.boolean(), hinted: z.boolean() })).optional(),
 });
 
-export function mountRankedRoutes(router, { ArcadeError, logError, resolveHint, logHint }) {
-  function projectResult(json, value, run) {
+export function mountRankedRoutes(router, { ArcadeError, logError, resolveHint, logHint, hintBand }) {
+  function projectResult(json, value, run, hintId) {
     const parsed = publicRun.safeParse({ ...value, studyActive: run.studyActive, hintAllowed: run.hintAllowed });
-    if (parsed.success) return json({ ...parsed.data, serverNow: Date.now() });
+    if (parsed.success) return json({ ...parsed.data, serverNow: Date.now(), ...(hintId ? { hintId } : {}) });
     logError("Unexpected ranked arcade projection");
     throw new ArcadeError(503, "Arcade storage returned an unexpected response.");
   }
@@ -126,7 +126,8 @@ export function mountRankedRoutes(router, { ArcadeError, logError, resolveHint, 
       if (error instanceof RankedMoveError) throw new ArcadeError(error.status, error.message);
       throw error;
     }
-    const hint = next.hintRequest && await resolveHint(next.hintRequest);
+    const band = next.hintRequest && next.hintRequest.level < 3 ? await hintBand(rpc, next.hintContext.skillId) : undefined;
+    const hint = next.hintRequest && await resolveHint({ ...next.hintRequest, band });
     if (hint) next.state = { ...next.state, hint: hint.text };
 
     const result = publicRun.parse(projectRanked({
@@ -139,7 +140,10 @@ export function mountRankedRoutes(router, { ArcadeError, logError, resolveHint, 
       observations: next.observations, hint_context: next.hintContext ?? null,
     });
     const committed = getRun(saved, gameId, runId);
-    if (hint) await logHint(rpc, { runId, skillId: next.hintContext.skillId, itemIndex: next.hintContext.itemIndex, level: next.hintRequest.level, ...hint });
-    return projectResult(json, committed.response, committed);
+    const hintId = hint ? await logHint(rpc, {
+      runId, skillId: next.hintContext.skillId, itemIndex: next.hintContext.itemIndex, level: next.hintRequest.level,
+      trigger: action.type === "hint" && action.auto ? "auto" : "requested", ...hint,
+    }) : undefined;
+    return projectResult(json, committed.response, committed, hintId);
   });
 }

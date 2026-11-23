@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, CircleHelp, Lightbulb, RotateCcw, Undo2, Volume2, VolumeX } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { MAX_ROUND_SCORE, XP_PER_ROUND } from "@/data/balloonGame";
+import { HintRating } from "./HintRating";
 import { ArcadeRequestError, endPopRun, hintPopRun, startPopRun, tapPopRun, type PopRun } from "@/lib/arcadeApi";
 import { ArcadeCue, ArcadeHearts, ArcadeScore } from "./ArcadeFeedback";
 import { RoundFeedbackDialog } from "./RoundFeedbackDialog";
@@ -39,6 +40,7 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
   const [run, setRun] = useState<PopRun | null>(null);
   const [wordFromServer, setWordFromServer] = useState("");
   const [hintFromServer, setHintFromServer] = useState("");
+  const [hintId, setHintId] = useState<number | null>(null);
   const [serverResult, setServerResult] = useState<RoundResult | null>(null);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [networkError, setNetworkError] = useState("");
@@ -83,6 +85,7 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
     setServerResult(null);
     setMissedBalloon(undefined);
     setHintFromServer("");
+    setHintId(null);
     pendingTap.current = null;
     setRetryTap(false);
   }
@@ -131,16 +134,17 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
     });
   }
 
-  function requestHint() {
+  function requestHint(auto = false) {
     if (!run) return;
     void withServer(async () => {
-      const data = await hintPopRun(run.runId, roundIndex, hintLevel + 1);
+      const data = await hintPopRun(run.runId, roundIndex, hintLevel + 1, auto);
       setHintFromServer(data.text);
+      setHintId(data.hintId ?? null);
       setHintLevel(data.level);
     });
   }
 
-  const showStudyHint = useEffectEvent(() => requestHint());
+  const showStudyHint = useEffectEvent(() => requestHint(true));
   useEffect(() => {
     if (!showError || roundOver || screen !== "round" || run?.status !== "active" || !run.studyActive || !run.hintAllowed || hintLevel >= 3 || networkBusy || retryTap || confirmExit) return;
     const key = run.runId + ":" + roundIndex + ":" + run.hearts;
@@ -329,7 +333,7 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
                 <output aria-live="polite">{answer || "—"}</output>
               </div>
               <div className="pop-tools">
-                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundOver || networkBusy || retryTap || hintLevel >= 3} onClick={requestHint}>
+                {run?.hintAllowed !== false && <button type="button" className="pop-button pop-quiet" aria-pressed={hintUsed} disabled={roundOver || networkBusy || retryTap || hintLevel >= 3} onClick={() => requestHint()}>
                   <Lightbulb size={17} aria-hidden="true" /> {hintUsed ? "Next hint" : "Hint"}
                 </button>}
                 <button type="button" className="pop-button pop-quiet" disabled={!popped.length || roundOver || networkBusy || retryTap} onClick={() => { setPopped((previous) => previous.slice(0, -1)); setShowError(false); }}>
@@ -361,6 +365,7 @@ export function BalloonGame({ personalBest, testPlay, onComplete, onExit }: {
                 <><CircleHelp size={18} aria-hidden="true" /> Pop an added letter. The game checks each pop.</>
               )}
             </p>
+            {run && hintUsed && hint && hintId !== null && <HintRating runId={run.runId} hintId={hintId} />}
           </>
         )}
 

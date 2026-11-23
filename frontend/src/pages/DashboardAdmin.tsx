@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { Activity, ArrowRight, Download, Eye, EyeOff, FilePlus2, FlaskConical, GraduationCap, Plus, Search, Sparkles, Trophy, UserCheck, UserPlus, Users } from "lucide-react";
+import { Activity, ArrowRight, Download, Eye, EyeOff, FilePlus2, FlaskConical, Settings2, GraduationCap, Plus, Search, Sparkles, Trophy, UserCheck, UserPlus, Users } from "lucide-react";
 import { DASHBOARD_LESSONS } from "@/data/dashboardLessons";
 import { MINIGAMES } from "@/data/landingData";
 import { ArcadeSelect } from "@/components/ui/ArcadeSelect";
-import { arcadeRequest, loadAdminStatus, loadClasses } from "@/lib/arcadeApi";
+import { arcadeRequest, loadAdminStatus, loadClasses, saveStudyOptions } from "@/lib/arcadeApi";
 import { formValue, useAdminAction, useRemote } from "./adminActions";
 import { downloadFile } from "./downloadFile";
 import { LoadState, Modal, Notice, PageHeader, SkeletonStats } from "./StaffKit";
@@ -23,21 +23,34 @@ interface Cohort {
   opensAt: string;
   posttestAt: string;
   closesAt: string;
+  delayedAt?: string | null;
+  hintThreshold?: number;
+  stallWindow?: number;
+  assignByClass?: boolean;
+  surveys?: number;
   preCount: number;
   postCount: number;
   participants: number;
   sealed: boolean;
 }
 
-type Dataset = "assessment" | "attempt" | "hint" | "parameter";
+type Dataset = "assessment" | "attempt" | "hint" | "parameter" | "survey";
 const DATASETS: { value: Dataset; label: string }[] = [
   { value: "assessment", label: "Assessment results (with per-skill subscores)" }, { value: "attempt", label: "Game attempts" },
   { value: "hint", label: "Hints shown" }, { value: "parameter", label: "BKT parameter versions" },
+  { value: "survey", label: "Usability survey responses" },
 ];
 const day = (value: string) => new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
 function isoDate(form: FormData, field: string) {
   return new Date(formValue(form, field)).toISOString();
+}
+
+// datetime-local needs local time without a zone.
+function localInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
 async function loadOverview(signal: AbortSignal) {
@@ -147,7 +160,7 @@ export function AdminScores() {
   );
 }
 
-type StudyDialog = "cohort" | "question" | "invite" | null;
+type StudyDialog = "cohort" | "question" | "invite" | "options" | null;
 
 export function AdminStudy() {
   const [selectedId, setSelectedId] = useState("");
@@ -187,6 +200,11 @@ export function AdminStudy() {
   const invite = (fields: FormData) => arcadeRequest("admin/study/participant", {
     cohortId: cohort!.id, lookup: formValue(fields, "participant"), consentKind: formValue(fields, "consent"), verified: fields.get("verified") === "on",
   }).then(() => { cohorts.reload(); return "Invitation saved. The player must still agree in their Study tab."; });
+
+  const saveOptions = (fields: FormData) => saveStudyOptions({
+    cohortId: cohort!.id, hintThreshold: Number(formValue(fields, "threshold")) / 100, stallWindow: Number(formValue(fields, "stall")),
+    assignByClass: fields.get("byClass") === "on", delayedAt: formValue(fields, "delayed") ? isoDate(fields, "delayed") : null,
+  }).then(() => { cohorts.reload(); return "Study options saved."; });
 
   function exportPage() {
     if (!cohort) return;
@@ -228,6 +246,7 @@ export function AdminStudy() {
               <div><dt>Protocol</dt><dd className="st-stat-text">{cohort.protocol}</dd></div>
               <div><dt>Pre-assessment opens</dt><dd className="st-stat-text">{day(cohort.opensAt)}</dd></div>
               <div><dt>Post-assessment opens</dt><dd className="st-stat-text">{day(cohort.posttestAt)}</dd></div>
+              {cohort.delayedAt && <div><dt>Follow-up assessment opens</dt><dd className="st-stat-text">{day(cohort.delayedAt)}</dd></div>}
               <div><dt>Closes</dt><dd className="st-stat-text">{day(cohort.closesAt)}</dd></div>
             </dl>
             <div className="st-grid-3">
@@ -241,6 +260,15 @@ export function AdminStudy() {
                 <h2 className="st-card-title">Participants</h2>
                 <p className="st-muted">{cohort.participants} invited and not withdrawn</p>
                 <button type="button" className="st-button" onClick={() => openDialog("invite")}><UserPlus size={16} aria-hidden="true" /> Invite participant</button>
+              </section>
+              <section className="st-card">
+                <h2 className="st-card-title">Hint rules and assignment</h2>
+                <p className="st-muted">
+                  Group A hints below {Math.round((cohort.hintThreshold ?? 0.7) * 100)}% mastery or after {cohort.stallWindow ?? 3} answers without progress
+                  · {cohort.assignByClass ? "whole classes share a group" : "each student is assigned on their own"}
+                  · {cohort.surveys ?? 0} survey responses
+                </p>
+                <button type="button" className="st-button" onClick={() => openDialog("options")}><Settings2 size={16} aria-hidden="true" /> Edit options</button>
               </section>
               <section className="st-card">
                 <h2 className="st-card-title">Export</h2>
@@ -279,6 +307,25 @@ export function AdminStudy() {
           <ArcadeSelect className="st-select" label="Correct choice" name="answer" defaultValue="0" options={[0, 1, 2].map((index) => ({ value: String(index), label: `Choice ${index + 1}` }))} />
           {actions("Add question")}
         </form>
+      </Modal>
+
+      <Modal open={dialog === "options"} onOpenChange={(open) => setDialog(open ? "options" : null)} title="Study options"
+        description={cohort?.sealed ? "Hint rules and assignment are locked after the first assent. You can still set the follow-up date." : "Hint rules and assignment lock after the first assent."}>
+        {cohort && (
+          <form className="st-form st-form-grid" onSubmit={(event) => void submit(event, saveOptions, "Couldn’t save the options. The follow-up date must fall between the post-assessment and the close date.")}>
+            {dialogNotice && <div className="st-span">{dialogNotice}</div>}
+            <label>Group A mastery threshold (%)<input type="number" name="threshold" min={5} max={95} step={1} required disabled={cohort.sealed} defaultValue={Math.round((cohort.hintThreshold ?? 0.7) * 100)} /></label>
+            <label>Stall window (answers)<input type="number" name="stall" min={2} max={10} step={1} required disabled={cohort.sealed} defaultValue={cohort.stallWindow ?? 3} /></label>
+            <label className="st-check st-span"><input type="checkbox" name="byClass" disabled={cohort.sealed} defaultChecked={cohort.assignByClass ?? false} /> Assign whole classes to the same group</label>
+            <label className="st-span">Follow-up (delayed) assessment opens — optional<input type="datetime-local" name="delayed" defaultValue={localInput(cohort.delayedAt)} /></label>
+            {cohort.sealed && <>
+              <input type="hidden" name="threshold" value={Math.round((cohort.hintThreshold ?? 0.7) * 100)} />
+              <input type="hidden" name="stall" value={cohort.stallWindow ?? 3} />
+              {cohort.assignByClass && <input type="hidden" name="byClass" value="on" />}
+            </>}
+            {actions("Save options")}
+          </form>
+        )}
       </Modal>
 
       <Modal open={dialog === "invite"} onOpenChange={(open) => setDialog(open ? "invite" : null)} title="Invite a participant" description="The player must still agree in their Study tab.">

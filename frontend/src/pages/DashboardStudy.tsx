@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, ClipboardCheck } from "lucide-react";
 import { arcadeRequest } from "@/lib/arcadeApi";
+import { StudySurvey } from "./StudySurvey";
 import "./dashboard-research.css";
 
-export type StudyStage = "unavailable" | "invited" | "scheduled" | "pretest" | "practice" | "posttest" | "completed" | "closed";
+export type StudyStage = "unavailable" | "invited" | "scheduled" | "pretest" | "practice" | "posttest" | "delayedtest" | "completed" | "closed";
 
 interface StudyState {
   state: StudyStage;
@@ -12,6 +13,8 @@ interface StudyState {
   opensAt?: string;
   posttestAt?: string;
   closesAt?: string;
+  delayedAt?: string;
+  surveyDue?: boolean;
   canWithdraw?: boolean;
   questions?: { id: string; prompt: string; choices: string[] }[];
 }
@@ -57,7 +60,7 @@ export function DashboardStudy({ onStatusChange, onPlay }: {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const phase = state?.state === "pretest" ? "pre" : "post";
+    const phase = state?.state === "pretest" ? "pre" : state?.state === "delayedtest" ? "delayed" : "post";
     const choices = (state?.questions ?? []).map((question) => ({ itemId: question.id, choice: checks[question.id] }));
     await change("study/assessment/" + phase + "/submit", { choices }, "Your assessment could not be saved. You can try again.");
   }
@@ -76,7 +79,7 @@ export function DashboardStudy({ onStatusChange, onPlay }: {
     </>
   );
 
-  const phase = state.state === "pretest" || state.state === "posttest";
+  const phase = state.state === "pretest" || state.state === "posttest" || state.state === "delayedtest";
   const questions = state.questions ?? [];
   const nextDate = state.state === "scheduled" ? state.opensAt : state.posttestAt;
 
@@ -99,7 +102,7 @@ export function DashboardStudy({ onStatusChange, onPlay }: {
         )}
         {phase && (
           <form className="pwd-study-form" onSubmit={(event) => void submit(event)}>
-            <h3>{state.state === "pretest" ? "Pre-assessment" : "Post-assessment"}</h3>
+            <h3>{state.state === "pretest" ? "Pre-assessment" : state.state === "delayedtest" ? "Follow-up assessment" : "Post-assessment"}</h3>
             <p>Choose one answer for each question.</p>
             {questions.map((question, questionIndex) => (
               <fieldset key={question.id} className="pwd-study-note" disabled={busy}>
@@ -117,7 +120,13 @@ export function DashboardStudy({ onStatusChange, onPlay }: {
         {state.state === "practice" && (
           <div className="pwd-study-note"><h3>Practice in the arcade</h3><p>All study games are available during practice. Your final assessment opens on {nextDate ? new Date(nextDate).toLocaleString() : "the scheduled date"}.</p>{onPlay && <button type="button" className="pwd-save pwd-study-primary" onClick={onPlay}>Go to Games <ArrowRight size={16} aria-hidden="true" /></button>}<button type="button" className="pwd-save" onClick={reload}>Check status</button></div>
         )}
-        {state.state === "completed" && <p className="pwd-study-note">Both assessments are saved. Thank you for taking part.</p>}
+        {state.state === "completed" && state.surveyDue && <StudySurvey respondent="student" onSubmitted={reload} />}
+        {state.state === "completed" && !state.surveyDue && (
+          <p className="pwd-study-note">
+            Your assessments are saved. Thank you for taking part.
+            {state.delayedAt && new Date(state.delayedAt) > new Date() && <> A short follow-up assessment opens on {new Date(state.delayedAt).toLocaleString()}.</>}
+          </p>
+        )}
         {state.state === "closed" && <p className="pwd-study-note">The study window has ended.</p>}
         {state.canWithdraw && (
           <details>

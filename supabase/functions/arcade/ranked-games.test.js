@@ -5,6 +5,23 @@ const runId = "4947bafb-8fcb-41ec-bc0f-6f59731fbba0";
 const epoch = 100_000;
 const frame = (state, now = epoch) => projectRanked({ runId, version: 0, status: "active", state }, now);
 
+Deno.test("Whack-a-Word gives the three-level hint ladder and extends the answer window", () => {
+  const state = createRankedState(2, "ranked", epoch);
+  assert.deepEqual(state.hintContext, { skillId: "kayarian-ng-salita", itemIndex: 0 });
+  const word = state.deck[state.deckIndex];
+  const hinted = moveRanked(state, { type: "hint" }, epoch + 9000);
+  assert.equal(hinted.state.hintLevel, 1);
+  assert.equal(hinted.hintRequest.level, 1);
+  assert.ok(hinted.hintRequest.secrets.includes(word.text));
+  assert.ok(hinted.state.deadline >= epoch + 9000 + 5000, "reading the hint does not use up the answer window");
+  let ladder = hinted;
+  for (const level of [2, 3]) ladder = moveRanked(ladder.state, { type: "hint" }, epoch + 9000 + level);
+  assert.equal(ladder.state.hintLevel, 3);
+  assert.throws(() => moveRanked(ladder.state, { type: "hint" }, epoch + 9010), RankedMoveError);
+  const answered = moveRanked(ladder.state, { type: "answer", choice: word.type }, epoch + 9020);
+  assert.equal(answered.observations[0].hintUsed, true);
+});
+
 for (const gameId of [3, 5, 6, 7]) {
   Deno.test("Ranked choice game " + gameId + " validates choices, hints, scoring and finish", () => {
     let state = createRankedState(gameId, "ranked", epoch);
